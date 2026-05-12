@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase, generateId, storageUrl } from '../supabase';
+import { getUid } from '../uid';
 
 export default function Post() {
   const { postId } = useParams();
   const [post, setPost] = useState(null);
+  const isOwner = post?.created_by === getUid();
   const [images, setImages] = useState([]);
   const [selections, setSelections] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -279,6 +281,7 @@ export default function Post() {
                   className={`selected-thumb${dragState.dragging === sel.image_id ? ' dragging' : ''}${dragState.over === sel.image_id && dragState.dragging !== sel.image_id ? ' drag-over' : ''}`}
                   data-image-id={sel.image_id}
                   draggable
+                  onClick={() => handleDeselect(sel.image_id)}
                   onDragStart={(e) => handleDragStart(e, sel.image_id)}
                   onDragOver={(e) => handleDragOver(e, sel.image_id)}
                   onDragEnd={handleDragEnd}
@@ -287,7 +290,7 @@ export default function Post() {
                 >
                   <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
                   <span className="selected-order">{idx + 1}</span>
-                  <button className="selected-remove" onClick={(e) => { e.stopPropagation(); handleDeselect(sel.image_id); }}>×</button>
+                  <span className="selected-remove">×</span>
                 </div>
               );
             })}
@@ -312,19 +315,21 @@ export default function Post() {
                 onDragStart={(e) => handlePoolDragStart(e, img.id)}
               >
                 <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
-                <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>
+                {isOwner && <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="bottom-bar">
-        <button className={`upload-btn${uploading ? ' uploading' : ''}`} onClick={() => fileInputRef.current?.click()}>
-          {uploading ? '업로드 중...' : '+ 사진 추가'}
-        </button>
-        <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
-      </div>
+      {isOwner && (
+        <div className="bottom-bar">
+          <button className={`upload-btn${uploading ? ' uploading' : ''}`} onClick={() => fileInputRef.current?.click()}>
+            {uploading ? '업로드 중...' : '+ 사진 추가'}
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
+        </div>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
