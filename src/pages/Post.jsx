@@ -334,7 +334,10 @@ export default function Post() {
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
-          {!isOwner && <button className="share-btn" onClick={() => setShowPasswordModal(true)}>잠금해제</button>}
+          {!isOwner
+            ? <button className="share-btn" onClick={() => setShowPasswordModal(true)}>잠금해제</button>
+            : <button className="share-btn" onClick={() => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('로그아웃됨'); }}>로그아웃</button>
+          }
           <button className="share-btn" onClick={handleShare}>공유</button>
         </div>
       </header>
