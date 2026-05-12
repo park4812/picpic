@@ -506,6 +506,89 @@ body {
   text-decoration: none;
 }
 
+/* Home Admin Link */
+.home-admin-link {
+  margin-top: 24px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.home-admin-link:active {
+  color: var(--text);
+}
+
+/* Admin Page */
+.admin-page {
+  min-height: 100dvh;
+}
+
+.admin-list {
+  padding: 8px 12px;
+}
+
+.admin-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-item-info {
+  flex: 1;
+  text-decoration: none;
+  color: var(--text);
+  min-width: 0;
+}
+
+.admin-item-title {
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-item-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.admin-delete-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.admin-delete-btn:active {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger {
+  flex: 1;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+}
+
 /* Responsive */
 @media (min-width: 768px) {
   .selection-grid {

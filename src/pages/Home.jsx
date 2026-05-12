@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase, generateId } from '../supabase';
 import { hashPassword } from '../crypto';
 
@@ -50,6 +50,7 @@ export default function Home() {
           {loading ? '생성 중...' : '새 게시물 만들기'}
         </button>
       </form>
+      <Link to="/admin" className="home-admin-link">게시물 관리</Link>
     </div>
   );
 }
