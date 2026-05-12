@@ -78,6 +78,25 @@ export default function Post() {
   const selectedImageIds = new Set(selections.map((s) => s.image_id));
   const getImageById = (id) => images.find((img) => img.id === id);
 
+  const resizeImage = (file, maxSize = 1920) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width <= maxSize && height <= maxSize) {
+        resolve(file);
+        return;
+      }
+      if (width > height) { height = Math.round(height * (maxSize / width)); width = maxSize; }
+      else { width = Math.round(width * (maxSize / height)); height = maxSize; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -85,9 +104,9 @@ export default function Post() {
     try {
       const rows = [];
       for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const path = `${postId}/${generateId()}.${ext}`;
-        const { error: err } = await supabase.storage.from('post-images').upload(path, file);
+        const resized = await resizeImage(file);
+        const path = `${postId}/${generateId()}.jpg`;
+        const { error: err } = await supabase.storage.from('post-images').upload(path, resized, { contentType: 'image/jpeg' });
         if (err) throw err;
         rows.push({ post_id: postId, storage_path: path, original_name: file.name });
       }
