@@ -186,7 +186,8 @@ export default function Post() {
     if (!selections.length) { showToast('셀렉된 이미지가 없습니다'); return; }
     const name = snapshotName.trim() || `스냅샷 ${snapshots.length + 1}`;
     const imageIds = selections.map((s) => s.image_id);
-    await supabase.from('snapshots').insert({ post_id: postId, name, image_ids: imageIds });
+    const { data } = await supabase.from('snapshots').insert({ post_id: postId, name, image_ids: imageIds }).select().single();
+    if (data) setSnapshots((prev) => [...prev, data]);
     setSnapshotName('');
     setShowSnapshotSave(false);
     showToast(`"${name}" 저장됨`);
