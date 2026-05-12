@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createPost } from '../api';
+import { supabase, generateId } from '../supabase';
 
 export default function Home() {
   const [title, setTitle] = useState('');
@@ -12,8 +12,10 @@ export default function Home() {
     if (loading) return;
     setLoading(true);
     try {
-      const post = await createPost(title || 'Untitled');
-      navigate(`/p/${post.id}`);
+      const id = generateId();
+      const { error } = await supabase.from('posts').insert({ id, title: title || 'Untitled' });
+      if (error) throw error;
+      navigate(`/p/${id}`);
     } catch {
       setLoading(false);
     }

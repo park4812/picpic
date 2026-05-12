@@ -1,6 +1,4 @@
 node_modules/
 dist/
-server/uploads/
-server/picpic.db
 .env
 .DS_Store
