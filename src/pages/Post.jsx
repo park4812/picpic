@@ -143,14 +143,17 @@ export default function Post() {
 
   const handleSelect = async (imageId) => {
     if (selectedImageIds.has(imageId)) {
+      setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
       await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
     } else {
       const maxPos = selections.length > 0 ? Math.max(...selections.map((s) => s.position)) + 1 : 0;
+      setSelections((prev) => [...prev, { post_id: postId, image_id: imageId, position: maxPos }]);
       await supabase.from('selections').insert({ post_id: postId, image_id: imageId, position: maxPos });
     }
   };
 
   const handleDeselect = async (imageId) => {
+    setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
     await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
   };
 
@@ -158,6 +161,8 @@ export default function Post() {
     e.stopPropagation();
     const img = getImageById(imageId);
     if (!img) return;
+    setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
+    setImages((prev) => prev.filter((i) => i.id !== imageId));
     await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
     await supabase.storage.from('post-images').remove([img.storage_path]);
     await supabase.from('images').delete().eq('id', imageId);
