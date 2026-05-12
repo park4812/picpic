@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase, generateId, storageUrl } from '../supabase';
-import { getUid } from '../uid';
+import { hashPassword } from '../crypto';
 
 export default function Post() {
   const { postId } = useParams();
   const [post, setPost] = useState(null);
-  const isOwner = post?.created_by === getUid();
+  const [isOwner, setIsOwner] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
   const [images, setImages] = useState([]);
   const [selections, setSelections] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -28,10 +30,11 @@ export default function Post() {
     let cancelled = false;
     async function load() {
       const { data: postData, error } = await supabase
-        .from('posts').select('*').eq('id', postId).single();
+        .from('posts').select('id, title, created_at').eq('id', postId).single();
       if (cancelled) return;
       if (error || !postData) { setNotFound(true); setLoading(false); return; }
       setPost(postData);
+      if (sessionStorage.getItem(`picpic_auth_${postId}`)) setIsOwner(true);
       const [imgRes, selRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
         supabase.from('selections').select('*').eq('post_id', postId).order('position'),
@@ -44,6 +47,21 @@ export default function Post() {
     load();
     return () => { cancelled = true; };
   }, [postId]);
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    const hash = await hashPassword(passwordInput);
+    const { data } = await supabase.rpc('verify_post_password', { p_post_id: postId, p_password_hash: hash });
+    if (data) {
+      setIsOwner(true);
+      sessionStorage.setItem(`picpic_auth_${postId}`, '1');
+      setShowPasswordModal(false);
+      setPasswordInput('');
+      showToast('관리자 모드 활성화');
+    } else {
+      showToast('비밀번호가 틀렸습니다');
+    }
+  };
 
   useEffect(() => {
     const channel = supabase.channel(`post-${postId}`, {
@@ -260,6 +278,7 @@ export default function Post() {
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
+          {!isOwner && <button className="share-btn" onClick={() => setShowPasswordModal(true)}>잠금해제</button>}
           <button className="share-btn" onClick={handleShare}>공유</button>
         </div>
       </header>
@@ -332,6 +351,27 @@ export default function Post() {
       )}
 
       {toast && <div className="toast">{toast}</div>}
+
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handlePasswordSubmit}>
+            <div className="modal-title">관리자 인증</div>
+            <div className="modal-desc">비밀번호를 입력하면 사진 추가/삭제가 가능합니다</div>
+            <input
+              className="home-input"
+              type="password"
+              placeholder="비밀번호"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
+              <button type="submit" className="btn-primary" disabled={!passwordInput.trim()}>확인</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

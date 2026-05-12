@@ -1,21 +1,24 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, generateId } from '../supabase';
-import { getUid } from '../uid';
+import { hashPassword } from '../crypto';
 
 export default function Home() {
   const [title, setTitle] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    if (loading || !password.trim()) return;
     setLoading(true);
     try {
       const id = generateId();
-      const { error } = await supabase.from('posts').insert({ id, title: title || 'Untitled', created_by: getUid() });
+      const passwordHash = await hashPassword(password);
+      const { error } = await supabase.from('posts').insert({ id, title: title || 'Untitled', password_hash: passwordHash });
       if (error) throw error;
+      sessionStorage.setItem(`picpic_auth_${id}`, '1');
       navigate(`/p/${id}`);
     } catch {
       setLoading(false);
@@ -35,7 +38,15 @@ export default function Home() {
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
-        <button className="btn-primary" type="submit" disabled={loading}>
+        <input
+          className="home-input"
+          type="password"
+          placeholder="관리 비밀번호 (사진 추가/삭제용)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <button className="btn-primary" type="submit" disabled={loading || !password.trim()}>
           {loading ? '생성 중...' : '새 게시물 만들기'}
         </button>
       </form>
