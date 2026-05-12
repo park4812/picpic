@@ -178,6 +178,23 @@ export default function Post() {
     }
   };
 
+  // --- Reorder: move source to target's position, shift others ---
+  const doReorder = async (sourceImageId, targetImageId) => {
+    const ordered = [...selections];
+    const srcIdx = ordered.findIndex((s) => s.image_id === sourceImageId);
+    const tgtIdx = ordered.findIndex((s) => s.image_id === targetImageId);
+    if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;
+
+    const [moved] = ordered.splice(srcIdx, 1);
+    ordered.splice(tgtIdx, 0, moved);
+    const updated = ordered.map((s, i) => ({ ...s, position: i }));
+    setSelections(updated);
+
+    await Promise.all(updated.map((s) =>
+      supabase.from('selections').update({ position: s.position }).eq('id', s.id)
+    ));
+  };
+
   // --- Desktop drag ---
   const handleDragStart = (e, imageId) => {
     e.dataTransfer.effectAllowed = 'move';
@@ -192,11 +209,7 @@ export default function Post() {
   const handleDrop = async (e, targetImageId) => {
     e.preventDefault();
     const sourceImageId = e.dataTransfer.getData('text/plain');
-    if (sourceImageId === targetImageId) return;
-    const targetSel = selections.find((s) => s.image_id === targetImageId);
-    if (targetSel) {
-      await supabase.rpc('reorder_selection', { p_post_id: postId, p_image_id: sourceImageId, p_new_position: targetSel.position });
-    }
+    if (sourceImageId !== targetImageId) await doReorder(sourceImageId, targetImageId);
     handleDragEnd();
   };
 
@@ -242,10 +255,7 @@ export default function Post() {
     const ts = touchState.current;
     if (ts.clone) { document.body.removeChild(ts.clone); ts.el.style.opacity = ''; }
     if (ts.moved && dragState.over && dragState.over !== ts.id) {
-      const targetSel = selections.find((s) => s.image_id === dragState.over);
-      if (targetSel) {
-        await supabase.rpc('reorder_selection', { p_post_id: postId, p_image_id: ts.id, p_new_position: targetSel.position });
-      }
+      await doReorder(ts.id, dragState.over);
     }
     touchState.current = { id: null, el: null, clone: null, startY: 0, startX: 0, moved: false };
     setDragState({ dragging: null, over: null });
