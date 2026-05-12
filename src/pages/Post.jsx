@@ -17,6 +17,10 @@ export default function Post() {
   const [toast, setToast] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [dragState, setDragState] = useState({ dragging: null, over: null });
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [showSnapshotSave, setShowSnapshotSave] = useState(false);
+  const [compareSnapshot, setCompareSnapshot] = useState(null);
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
 
@@ -35,13 +39,15 @@ export default function Post() {
       if (error || !postData) { setNotFound(true); setLoading(false); return; }
       setPost(postData);
       if (sessionStorage.getItem(`picpic_auth_${postId}`)) setIsOwner(true);
-      const [imgRes, selRes] = await Promise.all([
+      const [imgRes, selRes, snapRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
         supabase.from('selections').select('*').eq('post_id', postId).order('position'),
+        supabase.from('snapshots').select('*').eq('post_id', postId).order('created_at'),
       ]);
       if (cancelled) return;
       setImages(imgRes.data || []);
       setSelections(selRes.data || []);
+      setSnapshots(snapRes.data || []);
       setLoading(false);
     }
     load();
@@ -83,6 +89,12 @@ export default function Post() {
         () => {
           supabase.from('selections').select('*').eq('post_id', postId).order('position')
             .then(({ data }) => { if (data) setSelections(data); });
+        }
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'snapshots', filter: `post_id=eq.${postId}` },
+        () => {
+          supabase.from('snapshots').select('*').eq('post_id', postId).order('created_at')
+            .then(({ data }) => { if (data) setSnapshots(data); });
         }
       )
       .on('presence', { event: 'sync' }, () => {
@@ -166,6 +178,34 @@ export default function Post() {
     await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
     await supabase.storage.from('post-images').remove([img.storage_path]);
     await supabase.from('images').delete().eq('id', imageId);
+  };
+
+  // --- Snapshots ---
+  const handleSaveSnapshot = async (e) => {
+    e.preventDefault();
+    if (!selections.length) { showToast('셀렉된 이미지가 없습니다'); return; }
+    const name = snapshotName.trim() || `스냅샷 ${snapshots.length + 1}`;
+    const imageIds = selections.map((s) => s.image_id);
+    await supabase.from('snapshots').insert({ post_id: postId, name, image_ids: imageIds });
+    setSnapshotName('');
+    setShowSnapshotSave(false);
+    showToast(`"${name}" 저장됨`);
+  };
+
+  const handleLoadSnapshot = async (snapshot) => {
+    await supabase.from('selections').delete().eq('post_id', postId);
+    const rows = snapshot.image_ids.map((imageId, i) => ({
+      post_id: postId, image_id: imageId, position: i,
+    }));
+    if (rows.length) await supabase.from('selections').insert(rows);
+    setSelections(rows);
+    setCompareSnapshot(null);
+    showToast(`"${snapshot.name}" 불러옴`);
+  };
+
+  const handleDeleteSnapshot = async (snapshot) => {
+    setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
+    await supabase.from('snapshots').delete().eq('id', snapshot.id);
   };
 
   const handleShare = async () => {
@@ -332,6 +372,67 @@ export default function Post() {
         )}
       </div>
 
+      {/* Snapshot controls */}
+      <div className="snapshot-bar">
+        {selections.length > 0 && (
+          <button className="snapshot-save-btn" onClick={() => setShowSnapshotSave(true)}>현재 셀렉 저장</button>
+        )}
+      </div>
+
+      {/* Saved snapshots */}
+      {snapshots.length > 0 && (
+        <>
+          <div className="section-label">
+            스냅샷 {snapshots.length > 0 && <span className="section-count">{snapshots.length}</span>}
+          </div>
+          <div className="snapshot-list">
+            {snapshots.map((snap) => (
+              <div key={snap.id} className={`snapshot-card${compareSnapshot?.id === snap.id ? ' active' : ''}`}>
+                <div className="snapshot-card-header">
+                  <span className="snapshot-card-name">{snap.name}</span>
+                  <span className="snapshot-card-count">{snap.image_ids.length}장</span>
+                </div>
+                <div className="snapshot-card-thumbs">
+                  {snap.image_ids.slice(0, 5).map((imgId) => {
+                    const img = getImageById(imgId);
+                    return img ? <img key={imgId} src={storageUrl(img.storage_path)} alt="" /> : null;
+                  })}
+                  {snap.image_ids.length > 5 && <span className="snapshot-more">+{snap.image_ids.length - 5}</span>}
+                </div>
+                <div className="snapshot-card-actions">
+                  <button onClick={() => setCompareSnapshot(compareSnapshot?.id === snap.id ? null : snap)}>
+                    {compareSnapshot?.id === snap.id ? '닫기' : '비교'}
+                  </button>
+                  <button onClick={() => handleLoadSnapshot(snap)}>불러오기</button>
+                  <button className="danger" onClick={() => handleDeleteSnapshot(snap)}>삭제</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Compare view */}
+      {compareSnapshot && (
+        <div className="compare-section">
+          <div className="section-label">비교: {compareSnapshot.name}</div>
+          <div className="selection-area">
+            <div className="selection-grid">
+              {compareSnapshot.image_ids.map((imgId, idx) => {
+                const img = getImageById(imgId);
+                if (!img) return null;
+                return (
+                  <div key={imgId} className="selected-thumb">
+                    <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
+                    <span className="selected-order">{idx + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="section-label">
         전체 이미지 {images.length > 0 && <span className="section-count">{images.length}</span>}
       </div>
@@ -383,6 +484,27 @@ export default function Post() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
               <button type="submit" className="btn-primary" disabled={!passwordInput.trim()}>확인</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showSnapshotSave && (
+        <div className="modal-overlay" onClick={() => setShowSnapshotSave(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSaveSnapshot}>
+            <div className="modal-title">스냅샷 저장</div>
+            <div className="modal-desc">현재 셀렉 ({selections.length}장)을 스냅샷으로 저장합니다</div>
+            <input
+              className="home-input"
+              type="text"
+              placeholder={`스냅샷 ${snapshots.length + 1}`}
+              value={snapshotName}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowSnapshotSave(false)}>취소</button>
+              <button type="submit" className="btn-primary">저장</button>
             </div>
           </form>
         </div>

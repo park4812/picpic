@@ -439,6 +439,121 @@ body {
   cursor: pointer;
 }
 
+/* Snapshots */
+.snapshot-bar {
+  padding: 6px 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.snapshot-save-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.snapshot-save-btn:active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.snapshot-list {
+  padding: 4px 12px 8px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.snapshot-list::-webkit-scrollbar { display: none; }
+
+.snapshot-card {
+  flex-shrink: 0;
+  width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snapshot-card.active {
+  border-color: var(--accent);
+}
+
+.snapshot-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.snapshot-card-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.snapshot-card-count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.snapshot-card-thumbs {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.snapshot-card-thumbs img {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.snapshot-more {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding-left: 4px;
+}
+
+.snapshot-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.snapshot-card-actions button {
+  flex: 1;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.snapshot-card-actions button:active {
+  background: var(--surface-hover);
+}
+
+.snapshot-card-actions button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.compare-section {
+  border-top: 2px solid var(--accent);
+  margin-top: 4px;
+}
+
 /* Toast */
 .toast {
   position: fixed;
