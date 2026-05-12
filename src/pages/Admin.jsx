@@ -4,10 +4,13 @@ import { supabase } from '../supabase';
 import { hashPassword } from '../crypto';
 
 export default function Admin() {
+  const [authed, setAuthed] = useState(false);
+  const [hasPassword, setHasPassword] = useState(null);
+  const [adminHash, setAdminHash] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [passwordInput, setPasswordInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -16,11 +19,50 @@ export default function Admin() {
     setTimeout(() => setToast(null), 2000);
   };
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.rpc('has_admin_password');
+      setHasPassword(data);
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+    const hash = await hashPassword(passwordInput);
+    const { data } = await supabase.rpc('set_admin_password', { p_hash: hash });
+    if (data) {
+      setAdminHash(hash);
+      setAuthed(true);
+      setPasswordInput('');
+      loadPosts();
+    } else {
+      showToast('이미 설정된 비밀번호가 있습니다');
+      setHasPassword(true);
+    }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+    const hash = await hashPassword(passwordInput);
+    const { data } = await supabase.rpc('verify_admin_password', { p_hash: hash });
+    if (data) {
+      setAdminHash(hash);
+      setAuthed(true);
+      setPasswordInput('');
+      loadPosts();
+    } else {
+      showToast('비밀번호가 틀렸습니다');
+    }
+  };
+
   const loadPosts = async () => {
     const { data: postsData } = await supabase
       .from('posts').select('id, title, created_at').order('created_at', { ascending: false });
 
-    if (!postsData) { setLoading(false); return; }
+    if (!postsData) return;
 
     const withCounts = await Promise.all(
       postsData.map(async (post) => {
@@ -31,51 +73,69 @@ export default function Admin() {
         return { ...post, imageCount: imageCount || 0, selectionCount: selectionCount || 0 };
       })
     );
-
     setPosts(withCounts);
-    setLoading(false);
   };
 
-  useEffect(() => { loadPosts(); }, []);
-
-  const handleDelete = async (e) => {
-    e.preventDefault();
-    if (!deleteTarget || !passwordInput.trim()) return;
+  const handleDelete = async (post) => {
+    setDeleteTarget(post);
     setDeleting(true);
 
     try {
-      const hash = await hashPassword(passwordInput);
       const { data: images } = await supabase
-        .from('images').select('storage_path').eq('post_id', deleteTarget.id);
+        .from('images').select('storage_path').eq('post_id', post.id);
 
-      const { data: success } = await supabase.rpc('delete_post_with_password', {
-        p_post_id: deleteTarget.id,
-        p_password_hash: hash,
+      const { data: success } = await supabase.rpc('admin_delete_post', {
+        p_post_id: post.id,
+        p_admin_hash: adminHash,
       });
 
       if (!success) {
-        showToast('비밀번호가 틀렸습니다');
+        showToast('삭제 실패');
         setDeleting(false);
+        setDeleteTarget(null);
         return;
       }
 
       if (images?.length) {
-        const paths = images.map((img) => img.storage_path);
-        await supabase.storage.from('post-images').remove(paths);
+        await supabase.storage.from('post-images').remove(images.map((img) => img.storage_path));
       }
 
-      setPosts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
-      setDeleteTarget(null);
-      setPasswordInput('');
+      setPosts((prev) => prev.filter((p) => p.id !== post.id));
       showToast('게시물 삭제 완료');
     } catch {
       showToast('삭제 실패');
     }
 
     setDeleting(false);
+    setDeleteTarget(null);
   };
 
   if (loading) return <div className="loading"><div className="spinner" />로딩 중...</div>;
+
+  if (!authed) {
+    const isSetup = hasPassword === false;
+    return (
+      <div className="home">
+        <div className="home-logo">PicPic</div>
+        <div className="home-sub">{isSetup ? '관리자 비밀번호를 설정해주세요' : '관리자 비밀번호를 입력해주세요'}</div>
+        <form className="home-form" onSubmit={isSetup ? handleSetPassword : handleLogin}>
+          <input
+            className="home-input"
+            type="password"
+            placeholder={isSetup ? '새 관리자 비밀번호' : '관리자 비밀번호'}
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            autoFocus
+          />
+          <button className="btn-primary" type="submit" disabled={!passwordInput.trim()}>
+            {isSetup ? '설정 완료' : '로그인'}
+          </button>
+          <Link to="/" className="home-admin-link">← 홈으로</Link>
+        </form>
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page">
@@ -99,39 +159,21 @@ export default function Admin() {
                   {new Date(post.created_at).toLocaleDateString('ko-KR')} · 사진 {post.imageCount}장 · 셀렉 {post.selectionCount}장
                 </div>
               </Link>
-              <button className="admin-delete-btn" onClick={() => { setDeleteTarget(post); setPasswordInput(''); }}>
-                삭제
+              <button
+                className="admin-delete-btn"
+                disabled={deleting && deleteTarget?.id === post.id}
+                onClick={() => {
+                  if (confirm(`"${post.title}" 게시물을 삭제할까요?\n모든 이미지가 영구 삭제됩니다.`)) {
+                    handleDelete(post);
+                  }
+                }}
+              >
+                {deleting && deleteTarget?.id === post.id ? '삭제 중' : '삭제'}
               </button>
             </div>
           ))
         )}
       </div>
-
-      {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handleDelete}>
-            <div className="modal-title">게시물 삭제</div>
-            <div className="modal-desc">
-              "{deleteTarget.title}"을 삭제합니다.<br />
-              모든 이미지와 셀렉 데이터가 영구 삭제됩니다.
-            </div>
-            <input
-              className="home-input"
-              type="password"
-              placeholder="게시물 비밀번호"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="btn-secondary" onClick={() => setDeleteTarget(null)}>취소</button>
-              <button type="submit" className="btn-danger" disabled={!passwordInput.trim() || deleting}>
-                {deleting ? '삭제 중...' : '삭제'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
