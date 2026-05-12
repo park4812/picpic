@@ -204,11 +204,12 @@ body {
 .selected-thumb {
   position: relative;
   width: calc(25% - 5px);
-  aspect-ratio: 1;
+  aspect-ratio: 3/4;
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.15s, opacity 0.15s;
+  background: #0a0a0a;
 }
 
 .selected-thumb:active {
@@ -218,7 +219,7 @@ body {
 .selected-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .selected-order {
@@ -293,11 +294,12 @@ body {
 
 .pool-thumb {
   position: relative;
-  aspect-ratio: 1;
+  aspect-ratio: 3/4;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.15s;
+  background: #0a0a0a;
 }
 
 .pool-thumb:active {
@@ -307,7 +309,7 @@ body {
 .pool-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .pool-thumb.is-selected {
