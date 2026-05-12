@@ -78,7 +78,7 @@ export default function Post() {
   const selectedImageIds = new Set(selections.map((s) => s.image_id));
   const getImageById = (id) => images.find((img) => img.id === id);
 
-  const resizeImage = (file, maxSize = 1920) => new Promise((resolve) => {
+  const resizeImage = (file, maxSize = 960) => new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
