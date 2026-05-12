@@ -405,7 +405,7 @@ export default function Post() {
                     {compareSnapshot?.id === snap.id ? '닫기' : '비교'}
                   </button>
                   <button onClick={() => handleLoadSnapshot(snap)}>불러오기</button>
-                  <button className="danger" onClick={() => handleDeleteSnapshot(snap)}>삭제</button>
+                  {isOwner && <button className="danger" onClick={() => handleDeleteSnapshot(snap)}>삭제</button>}
                 </div>
               </div>
             ))}
