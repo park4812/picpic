@@ -13,12 +13,21 @@ export default function Home() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading || !password.trim()) return;
+    if (loading) return;
+    // Not logged in requires password
+    if (!user && !password.trim()) return;
     setLoading(true);
     try {
       const id = generateId();
-      const passwordHash = await hashPassword(password);
-      const { error } = await supabase.from('posts').insert({ id, title: title || 'Untitled', password_hash: passwordHash });
+      const row = { id, title: title || 'Untitled' };
+      if (user) {
+        // Logged in: link to account, no password needed
+        row.user_id = user.id;
+      } else {
+        // Not logged in: set management password
+        row.password_hash = await hashPassword(password);
+      }
+      const { error } = await supabase.from('posts').insert(row);
       if (error) throw error;
       sessionStorage.setItem(`picpic_auth_${id}`, '1');
       navigate(`/p/${id}`);
@@ -28,6 +37,8 @@ export default function Home() {
       alert('게시물 생성에 실패했습니다. 다시 시도해주세요.');
     }
   };
+
+  const canSubmit = user ? true : password.trim();
 
   return (
     <div className="home">
@@ -54,15 +65,20 @@ export default function Home() {
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
-        <input
-          className="home-input"
-          type="password"
-          placeholder="관리 비밀번호 (사진 추가/삭제용)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button className="btn-primary" type="submit" disabled={loading || !password.trim()}>
+        {!user && (
+          <input
+            className="home-input"
+            type="password"
+            placeholder="관리 비밀번호 (사진 추가/삭제용)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        )}
+        {user && (
+          <div className="home-login-notice">로그인 상태 — 비밀번호 없이 내 계정으로 관리됩니다</div>
+        )}
+        <button className="btn-primary" type="submit" disabled={loading || !canSubmit}>
           {loading ? '생성 중...' : '새 게시물 만들기'}
         </button>
       </form>

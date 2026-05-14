@@ -1342,6 +1342,39 @@ body {
   color: var(--text);
 }
 
+/* Home login notice */
+.home-login-notice {
+  font-size: 13px;
+  color: var(--success);
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* Account link button */
+.link-btn {
+  border-color: var(--success) !important;
+  color: var(--success) !important;
+  font-size: 11px;
+}
+
+/* Modal divider */
+.modal-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.modal-divider::before,
+.modal-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* Recruit save status */
 .recruit-save-status {
   font-size: 12px;

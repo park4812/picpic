@@ -2,12 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase, generateId, storageUrl } from '../supabase';
 import { hashPassword } from '../crypto';
+import { useAuth } from '../auth';
 
 export default function Post() {
   const { postId } = useParams();
+  const { user } = useAuth();
   const [post, setPost] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [canLinkAccount, setCanLinkAccount] = useState(false); // show "계정 연결" button
   const [passwordInput, setPasswordInput] = useState('');
   const [images, setImages] = useState([]);
   const [selections, setSelections] = useState([]);
@@ -40,12 +43,20 @@ export default function Post() {
     let cancelled = false;
     async function load() {
       const { data: postData, error } = await supabase
-        .from('posts').select('id, title, created_at, selection_locked').eq('id', postId).single();
+        .from('posts').select('id, title, created_at, selection_locked, user_id, password_hash').eq('id', postId).single();
       if (cancelled) return;
       if (error || !postData) { setNotFound(true); setLoading(false); return; }
       setPost(postData);
       setSelectionLocked(postData.selection_locked || false);
-      if (sessionStorage.getItem(`picpic_auth_${postId}`)) setIsOwner(true);
+      // Ownership check: account-based first, then session-based
+      const sessionAuth = sessionStorage.getItem(`picpic_auth_${postId}`);
+      if (user && postData.user_id && postData.user_id === user.id) {
+        setIsOwner(true);
+      } else if (sessionAuth) {
+        setIsOwner(true);
+        // If logged in but post not linked to account → can link
+        if (user && !postData.user_id) setCanLinkAccount(true);
+      }
       const [imgRes, selRes, snapRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
         supabase.from('selections').select('*').eq('post_id', postId).order('position'),
@@ -61,7 +72,7 @@ export default function Post() {
     }
     load();
     return () => { cancelled = true; };
-  }, [postId]);
+  }, [postId, user]);
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
@@ -73,9 +84,20 @@ export default function Post() {
       setShowPasswordModal(false);
       setPasswordInput('');
       showToast('관리자 모드 활성화');
+      // If logged in but post not linked → allow linking
+      if (user && !post?.user_id) setCanLinkAccount(true);
     } else {
       showToast('비밀번호가 틀렸습니다');
     }
+  };
+
+  const handleLinkAccount = async () => {
+    if (!user || !post) return;
+    const { error } = await supabase.from('posts').update({ user_id: user.id }).eq('id', postId);
+    if (error) { showToast('연결 실패'); return; }
+    setPost((prev) => ({ ...prev, user_id: user.id }));
+    setCanLinkAccount(false);
+    showToast('내 계정에 연결됨');
   };
 
   useEffect(() => {
@@ -426,8 +448,11 @@ export default function Post() {
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
+          {canLinkAccount && (
+            <button className="share-btn link-btn" onClick={handleLinkAccount}>계정 연결</button>
+          )}
           <button className={`share-btn auth-btn${isOwner ? ' authed' : ''}`} onClick={isOwner
-            ? () => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('로그아웃됨'); }
+            ? () => { setIsOwner(false); setCanLinkAccount(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('관리자 해제'); }
             : () => setShowPasswordModal(true)
           }>{isOwner ? '관리자' : '인증'}</button>
           <button className="share-btn" onClick={handleShare} aria-label="공유">
@@ -599,19 +624,43 @@ export default function Post() {
         <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handlePasswordSubmit}>
             <div className="modal-title">관리자 인증</div>
-            <div className="modal-desc">비밀번호를 입력하면 사진 관리, 셀렉 편집, 잠금 설정이 가능합니다</div>
-            <input
-              className="home-input"
-              type="password"
-              placeholder="비밀번호"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
-              <button type="submit" className="btn-primary" disabled={!passwordInput.trim()}>확인</button>
+            <div className="modal-desc">
+              {post?.user_id
+                ? '이 게시물은 계정에 연결되어 있습니다. 로그인하거나 비밀번호로 인증하세요.'
+                : '비밀번호를 입력하면 사진 관리, 셀렉 편집, 잠금 설정이 가능합니다'}
             </div>
+            {!user && (
+              <Link
+                to="/login"
+                className="btn-primary"
+                style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}
+                onClick={() => setShowPasswordModal(false)}
+              >
+                로그인으로 인증
+              </Link>
+            )}
+            {post?.password_hash && (
+              <>
+                {!user && <div className="modal-divider"><span>또는</span></div>}
+                <input
+                  className="home-input"
+                  type="password"
+                  placeholder="관리 비밀번호"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  autoFocus={!!user}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
+                  <button type="submit" className="btn-primary" disabled={!passwordInput.trim()}>확인</button>
+                </div>
+              </>
+            )}
+            {!post?.password_hash && user && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: 8 }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
+              </div>
+            )}
           </form>
         </div>
       )}
