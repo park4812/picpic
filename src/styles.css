@@ -1361,6 +1361,50 @@ body {
   color: var(--text);
 }
 
+/* Home menu (logged-in) */
+.home-menu {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.home-menu-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.home-menu-item:active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Home admin login (footer) */
+.home-admin-login {
+  margin-top: 8px;
+  color: #444;
+  text-decoration: none;
+  font-size: 11px;
+  transition: color 0.15s;
+}
+
+.home-admin-login:active {
+  color: var(--text-dim);
+}
+
 /* Home login notice */
 .home-login-notice {
   font-size: 13px;

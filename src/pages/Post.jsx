@@ -54,6 +54,14 @@ export default function Post() {
         setIsOwner(true);
       } else if (sessionAuth) {
         setIsOwner(true);
+        // Auto-link: user is logged in + has password auth + post not linked yet
+        if (user && !postData.user_id) {
+          supabase.from('posts').update({ user_id: user.id }).eq('id', postId).then(({ error: linkErr }) => {
+            if (!linkErr && !cancelled) {
+              setPost((prev) => prev ? { ...prev, user_id: user.id } : prev);
+            }
+          });
+        }
       }
       // Update last accessed timestamp (fire and forget)
       supabase.from('posts').update({ last_accessed_at: new Date().toISOString() }).eq('id', postId).then();
