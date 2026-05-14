@@ -21,6 +21,7 @@ export default function Post() {
   const [snapshotName, setSnapshotName] = useState('');
   const [showSnapshotSave, setShowSnapshotSave] = useState(false);
   const [compareSnapshot, setCompareSnapshot] = useState(null);
+  const [justSelected, setJustSelected] = useState(null);
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
 
@@ -160,6 +161,8 @@ export default function Post() {
     } else {
       const maxPos = selections.length > 0 ? Math.max(...selections.map((s) => s.position)) + 1 : 0;
       setSelections((prev) => [...prev, { post_id: postId, image_id: imageId, position: maxPos }]);
+      setJustSelected(imageId);
+      setTimeout(() => setJustSelected(null), 300);
       await supabase.from('selections').insert({ post_id: postId, image_id: imageId, position: maxPos });
     }
   };
@@ -194,6 +197,7 @@ export default function Post() {
   };
 
   const handleLoadSnapshot = async (snapshot) => {
+    if (selections.length > 0 && !confirm(`현재 셀렉을 "${snapshot.name}" 스냅샷으로 교체할까요?`)) return;
     await supabase.from('selections').delete().eq('post_id', postId);
     const rows = snapshot.image_ids.map((imageId, i) => ({
       post_id: postId, image_id: imageId, position: i,
@@ -308,6 +312,17 @@ export default function Post() {
     return () => { document.removeEventListener('touchmove', handleTouchMove); document.removeEventListener('touchend', handleTouchEnd); };
   }, [handleTouchMove, handleTouchEnd]);
 
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        if (showSnapshotSave) setShowSnapshotSave(false);
+        else if (showPasswordModal) setShowPasswordModal(false);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [showSnapshotSave, showPasswordModal]);
+
   // --- Pool drag to selection ---
   const handlePoolDragStart = (e, imageId) => {
     if (selectedImageIds.has(imageId)) return;
@@ -328,9 +343,11 @@ export default function Post() {
   if (notFound) return <div className="not-found"><h2>게시물을 찾을 수 없습니다</h2><Link to="/">홈으로 돌아가기</Link></div>;
 
   return (
-    <div className="post-page">
+    <div className={`post-page${isOwner ? ' has-bottom-bar' : ''}`}>
       <header className="post-header">
-        <Link to="/" style={{ color: 'var(--text)', textDecoration: 'none', fontSize: '20px' }}>←</Link>
+        <Link to="/" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', padding: '8px', marginLeft: '-8px' }} aria-label="홈으로">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </Link>
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
@@ -338,7 +355,9 @@ export default function Post() {
             ? () => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('로그아웃됨'); }
             : () => setShowPasswordModal(true)
           }>{isOwner ? '🔓' : '🔒'}</button>
-          <button className="share-btn" onClick={handleShare}>공유</button>
+          <button className="share-btn" onClick={handleShare} aria-label="공유">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
         </div>
       </header>
 
@@ -442,13 +461,15 @@ export default function Post() {
       </div>
       <div className="pool-area">
         {images.length === 0 ? (
-          <div className="selection-empty" style={{ minHeight: '200px' }}>아래 버튼으로 이미지를 업로드하세요</div>
+          <div className="selection-empty" style={{ minHeight: '200px' }}>
+            {isOwner ? '아래 버튼으로 이미지를 업로드하세요' : '아직 업로드된 이미지가 없습니다'}
+          </div>
         ) : (
           <div className="pool-grid">
             {images.map((img) => (
               <div
                 key={img.id}
-                className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}`}
+                className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}`}
                 onClick={() => handleSelect(img.id)}
                 draggable={!selectedImageIds.has(img.id)}
                 onDragStart={(e) => handlePoolDragStart(e, img.id)}
