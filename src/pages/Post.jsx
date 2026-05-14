@@ -14,6 +14,7 @@ export default function Post() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [toast, setToast] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [dragState, setDragState] = useState({ dragging: null, over: null });
@@ -144,12 +145,13 @@ export default function Post() {
     setUploading(true);
     try {
       const rows = [];
-      for (const file of files) {
-        const resized = await resizeImage(file);
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress(`${i + 1}/${files.length}장`);
+        const resized = await resizeImage(files[i]);
         const path = `${postId}/${generateId()}.jpg`;
         const { error: err } = await supabase.storage.from('post-images').upload(path, resized, { contentType: 'image/jpeg' });
         if (err) throw err;
-        rows.push({ post_id: postId, storage_path: path, original_name: file.name });
+        rows.push({ post_id: postId, storage_path: path, original_name: files[i].name });
       }
       const { error } = await supabase.from('images').insert(rows);
       if (error) throw error;
@@ -159,6 +161,7 @@ export default function Post() {
       showToast('업로드 실패');
     }
     setUploading(false);
+    setUploadProgress('');
     e.target.value = '';
   };
 
@@ -182,6 +185,7 @@ export default function Post() {
 
   const handleDelete = async (e, imageId) => {
     e.stopPropagation();
+    if (!confirm('이 이미지를 삭제할까요?')) return;
     const img = getImageById(imageId);
     if (!img) return;
     setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
@@ -218,6 +222,7 @@ export default function Post() {
   };
 
   const handleDeleteSnapshot = async (snapshot) => {
+    if (!confirm(`"${snapshot.name}" 스냅샷을 삭제할까요?`)) return;
     setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
     await supabase.from('snapshots').delete().eq('id', snapshot.id);
   };
@@ -420,10 +425,10 @@ export default function Post() {
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
-          <button className="share-btn" onClick={isOwner
+          <button className={`share-btn auth-btn${isOwner ? ' authed' : ''}`} onClick={isOwner
             ? () => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('로그아웃됨'); }
             : () => setShowPasswordModal(true)
-          }>{isOwner ? '🔓' : '🔒'}</button>
+          }>{isOwner ? '관리자' : '인증'}</button>
           <button className="share-btn" onClick={handleShare} aria-label="공유">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
           </button>
@@ -463,7 +468,7 @@ export default function Post() {
                 >
                   <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
                   <span className="selected-order">{idx + 1}</span>
-                  {canEditSelection && <span className="selected-remove">×</span>}
+                  {canEditSelection && <button className="selected-remove" aria-label="셀렉 해제">×</button>}
                 </div>
               );
             })}
@@ -490,7 +495,7 @@ export default function Post() {
                     <div key={imageId} className="selected-thumb" onClick={() => handleMyPick(imageId)}>
                       <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
                       <span className="selected-order mypick-order">{idx + 1}</span>
-                      <span className="selected-remove">×</span>
+                      <button className="selected-remove" aria-label="셀렉 해제">×</button>
                     </div>
                   );
                 })}
@@ -501,13 +506,13 @@ export default function Post() {
       )}
 
       {/* Snapshot controls */}
-      <div className="snapshot-bar">
-        {((selectionLocked && !isOwner) ? myPicks.length > 0 : selections.length > 0) && (
+      {((selectionLocked && !isOwner) ? myPicks.length > 0 : selections.length > 0) && (
+        <div className="snapshot-bar">
           <button className="snapshot-save-btn" onClick={() => setShowSnapshotSave(true)}>
             {(selectionLocked && !isOwner) ? '내 셀렉 저장' : '현재 셀렉 저장'}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Saved snapshots */}
       {snapshots.length > 0 && (
@@ -531,7 +536,7 @@ export default function Post() {
                 </div>
                 <div className="snapshot-card-actions">
                   <button onClick={() => openCompareViewer(snap)}>비교</button>
-                  <button onClick={() => handleLoadSnapshot(snap)}>불러오기</button>
+                  {canEditSelection && <button onClick={() => handleLoadSnapshot(snap)}>불러오기</button>}
                   {isOwner && <button className="danger" onClick={() => handleDeleteSnapshot(snap)}>삭제</button>}
                 </div>
               </div>
@@ -569,7 +574,7 @@ export default function Post() {
       {isOwner && (
         <div className="bottom-bar">
           <button className={`upload-btn${uploading ? ' uploading' : ''}`} onClick={() => fileInputRef.current?.click()}>
-            {uploading ? '업로드 중...' : '+ 사진 추가'}
+            {uploading ? `업로드 중... ${uploadProgress}` : '+ 사진 추가'}
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
         </div>
@@ -581,7 +586,7 @@ export default function Post() {
         <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handlePasswordSubmit}>
             <div className="modal-title">관리자 인증</div>
-            <div className="modal-desc">비밀번호를 입력하면 사진 추가/삭제가 가능합니다</div>
+            <div className="modal-desc">비밀번호를 입력하면 사진 관리, 셀렉 편집, 잠금 설정이 가능합니다</div>
             <input
               className="home-input"
               type="password"

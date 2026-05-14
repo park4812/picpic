@@ -173,6 +173,18 @@ body {
   background: rgba(59, 130, 246, 0.15);
 }
 
+.auth-btn {
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 6px 12px;
+}
+
+.auth-btn.authed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Selection Area */
 .section-label {
   padding: 12px 16px 8px;
@@ -280,6 +292,9 @@ body {
   justify-content: center;
   border: none;
   cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .selected-thumb.dragging {
@@ -325,7 +340,7 @@ body {
 
 .pool-thumb {
   position: relative;
-  aspect-ratio: 3/4;
+  aspect-ratio: 1/1;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
@@ -340,8 +355,7 @@ body {
 .pool-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  background: var(--surface);
+  object-fit: cover;
 }
 
 @keyframes selectPulse {
@@ -785,7 +799,7 @@ body {
   padding: 10px 20px;
   border-radius: 20px;
   font-size: 13px;
-  z-index: 200;
+  z-index: 600;
   animation: toastIn 0.3s ease, toastOut 0.3s ease 1.7s forwards;
   white-space: nowrap;
 }
@@ -848,6 +862,8 @@ body {
   color: var(--text-dim);
   font-size: 13px;
   text-decoration: none;
+  text-align: center;
+  align-self: center;
 }
 
 .home-admin-link:active {
@@ -902,6 +918,8 @@ body {
   font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .admin-delete-btn:active {
@@ -1004,6 +1022,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* When both selected and my-pick: show green pick style, not faded */
+.pool-thumb.is-selected.is-my-pick {
+  opacity: 0.6;
+}
+
+.pool-thumb.is-selected.is-my-pick::after {
+  content: '♥';
+  background: var(--success);
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  top: 4px;
+  left: 4px;
+  inset: auto;
 }
 
 /* Responsive */

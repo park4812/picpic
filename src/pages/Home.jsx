@@ -20,8 +20,10 @@ export default function Home() {
       if (error) throw error;
       sessionStorage.setItem(`picpic_auth_${id}`, '1');
       navigate(`/p/${id}`);
-    } catch {
+    } catch (err) {
+      console.error(err);
       setLoading(false);
+      alert('게시물 생성에 실패했습니다. 다시 시도해주세요.');
     }
   };
 
