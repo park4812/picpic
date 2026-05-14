@@ -1125,6 +1125,62 @@ body {
   color: #555;
 }
 
+/* Cover image upload */
+.recruit-cover-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 160px;
+  border-radius: 12px;
+  border: 2px dashed var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.recruit-cover-upload:active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.recruit-cover-preview {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.recruit-cover-img {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  display: block;
+  border-radius: 12px;
+}
+
+.recruit-cover-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
 .recruit-textarea {
   resize: vertical;
   min-height: 80px;

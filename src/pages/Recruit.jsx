@@ -33,46 +33,89 @@ function buildText(form) {
   return lines.join('\n');
 }
 
-function drawCard(canvas, form) {
+function drawCard(canvas, form, coverImg) {
   const W = 1080, H = 1920;
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  // Background gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#0a0a0a');
-  grad.addColorStop(0.5, '#111118');
-  grad.addColorStop(1, '#0a0a0a');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Accent line top
+  // Accent gradient (reused)
   const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
   accentGrad.addColorStop(0, '#3b82f6');
   accentGrad.addColorStop(0.5, '#8b5cf6');
   accentGrad.addColorStop(1, '#ec4899');
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, W, 6);
 
-  // Title
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('📷 촬영 모델 모집', W / 2, 140);
+  const IMG_H = 780; // cover image area height
+  let contentY; // where text content starts
 
-  // Divider
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(80, 190);
-  ctx.lineTo(W - 80, 190);
-  ctx.stroke();
+  if (coverImg) {
+    // Draw cover image (cover fit)
+    const iw = coverImg.naturalWidth || coverImg.width;
+    const ih = coverImg.naturalHeight || coverImg.height;
+    const scale = Math.max(W / iw, IMG_H / ih);
+    const sw = iw * scale, sh = ih * scale;
+    const sx = (W - sw) / 2, sy = (IMG_H - sh) / 2;
+    ctx.drawImage(coverImg, sx, sy, sw, sh);
+
+    // Gradient overlay on image bottom
+    const fadeGrad = ctx.createLinearGradient(0, IMG_H * 0.4, 0, IMG_H);
+    fadeGrad.addColorStop(0, 'rgba(10,10,10,0)');
+    fadeGrad.addColorStop(1, '#0a0a0a');
+    ctx.fillStyle = fadeGrad;
+    ctx.fillRect(0, 0, W, IMG_H);
+
+    // Dark background below image
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, IMG_H, W, H - IMG_H);
+
+    // Title on gradient overlay
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 12;
+    ctx.fillText('📷 촬영 모델 모집', W / 2, IMG_H - 40);
+    ctx.shadowBlur = 0;
+
+    // Accent line under title
+    ctx.fillStyle = accentGrad;
+    ctx.fillRect(80, IMG_H + 10, W - 160, 3);
+
+    contentY = IMG_H + 60;
+  } else {
+    // No image: original dark layout
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0a0a0a');
+    grad.addColorStop(0.5, '#111118');
+    grad.addColorStop(1, '#0a0a0a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Accent line top
+    ctx.fillStyle = accentGrad;
+    ctx.fillRect(0, 0, W, 6);
+
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('📷 촬영 모델 모집', W / 2, 140);
+
+    // Divider
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(80, 190);
+    ctx.lineTo(W - 80, 190);
+    ctx.stroke();
+
+    contentY = 280;
+  }
 
   // Fields
-  let y = 280;
-  const LX = 100; // left margin
-  const MAX_W = W - 200; // text wrap width
+  let y = contentY;
+  const LX = 100;
+  const MAX_W = W - 200;
 
   FIELD_META.forEach(({ key, label, icon }) => {
     const value = form[key]?.trim();
@@ -102,7 +145,7 @@ function drawCard(canvas, form) {
     }
     if (line) { ctx.fillText(line, LX, y); y += 52; }
 
-    y += 28; // gap between fields
+    y += 28;
   });
 
   // Bottom accent line
@@ -120,7 +163,10 @@ export default function Recruit() {
   const [form, setForm] = useState(DEFAULT);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [toast, setToast] = useState(null);
+  const [coverSrc, setCoverSrc] = useState(null);   // data URL string
+  const [coverImg, setCoverImg] = useState(null);    // loaded Image element
   const canvasRef = useRef(null);
+  const fileRef = useRef(null);
 
   const set = (key, val) => setForm((prev) => ({ ...prev, [key]: val }));
   const hasContent = Object.values(form).some((v) => v.trim());
@@ -130,6 +176,23 @@ export default function Recruit() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
+  const handleCoverUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target.result;
+      setCoverSrc(url);
+      const img = new Image();
+      img.onload = () => setCoverImg(img);
+      img.src = url;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const removeCover = () => { setCoverSrc(null); setCoverImg(null); };
+
   const handleCopyText = () => {
     const text = buildText(form);
     navigator.clipboard.writeText(text).then(() => showToast('텍스트 복사됨'));
@@ -137,7 +200,7 @@ export default function Recruit() {
 
   const handleDownloadImage = () => {
     const canvas = canvasRef.current;
-    drawCard(canvas, form);
+    drawCard(canvas, form, coverImg);
     const link = document.createElement('a');
     link.download = '모집_팜플렛.png';
     link.href = canvas.toDataURL('image/png');
@@ -148,7 +211,7 @@ export default function Recruit() {
   const handlePreview = () => {
     if (!hasContent) return;
     const canvas = canvasRef.current;
-    drawCard(canvas, form);
+    drawCard(canvas, form, coverImg);
     setPreviewUrl(canvas.toDataURL('image/png'));
   };
 
@@ -165,6 +228,23 @@ export default function Recruit() {
       </header>
 
       <div className="recruit-form">
+        {/* Cover image upload */}
+        <div className="recruit-field">
+          <label className="recruit-label">🖼️ 시안 이미지 (선택)</label>
+          {coverSrc ? (
+            <div className="recruit-cover-preview">
+              <img src={coverSrc} alt="시안" className="recruit-cover-img" />
+              <button className="recruit-cover-remove" onClick={removeCover} aria-label="이미지 제거">✕</button>
+            </div>
+          ) : (
+            <button className="recruit-cover-upload" onClick={() => fileRef.current?.click()}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span>사진 추가</span>
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleCoverUpload} style={{ display: 'none' }} />
+        </div>
+
         {FIELD_META.map(({ key, label, placeholder, icon, multiline }) => (
           <div key={key} className="recruit-field">
             <label className="recruit-label">{icon} {label}</label>
