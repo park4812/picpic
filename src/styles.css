@@ -925,6 +925,87 @@ body {
   opacity: 0.5;
 }
 
+/* Lock toggle & badge */
+.lock-toggle-btn {
+  margin-left: 4px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.lock-toggle-btn:active {
+  background: var(--surface-hover);
+}
+
+.lock-toggle-btn.active {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.lock-badge {
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Read-only selection thumb */
+.selected-thumb.read-only {
+  cursor: default;
+}
+
+.selected-thumb.read-only:active {
+  transform: none;
+}
+
+/* My Picks area (green accent) */
+.mypick-area {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: rgba(34, 197, 94, 0.03);
+}
+
+.mypick-order {
+  background: var(--success) !important;
+}
+
+.mypick-count {
+  background: var(--success) !important;
+}
+
+/* Pool thumb: my-pick indicator */
+.pool-thumb.is-my-pick {
+  box-shadow: inset 0 0 0 2px var(--success);
+}
+
+.pool-thumb.is-my-pick::after {
+  content: '♥';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: var(--success);
+  color: #fff;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Responsive */
 @media (min-width: 768px) {
   .selection-grid {

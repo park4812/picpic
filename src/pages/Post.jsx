@@ -22,6 +22,8 @@ export default function Post() {
   const [showSnapshotSave, setShowSnapshotSave] = useState(false);
   const [viewer, setViewer] = useState(null);
   const [justSelected, setJustSelected] = useState(null);
+  const [selectionLocked, setSelectionLocked] = useState(false);
+  const [myPicks, setMyPicks] = useState([]);
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
   const viewerTouchRef = useRef({ startX: 0, startY: 0 });
@@ -36,10 +38,11 @@ export default function Post() {
     let cancelled = false;
     async function load() {
       const { data: postData, error } = await supabase
-        .from('posts').select('id, title, created_at').eq('id', postId).single();
+        .from('posts').select('id, title, created_at, selection_locked').eq('id', postId).single();
       if (cancelled) return;
       if (error || !postData) { setNotFound(true); setLoading(false); return; }
       setPost(postData);
+      setSelectionLocked(postData.selection_locked || false);
       if (sessionStorage.getItem(`picpic_auth_${postId}`)) setIsOwner(true);
       const [imgRes, selRes, snapRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
@@ -51,6 +54,8 @@ export default function Post() {
       setSelections(selRes.data || []);
       setSnapshots(snapRes.data || []);
       setLoading(false);
+      const savedPicks = sessionStorage.getItem(`picpic_mypicks_${postId}`);
+      if (savedPicks) try { setMyPicks(JSON.parse(savedPicks)); } catch {}
     }
     load();
     return () => { cancelled = true; };
@@ -111,6 +116,8 @@ export default function Post() {
 
   const selectedImageIds = new Set(selections.map((s) => s.image_id));
   const getImageById = (id) => images.find((img) => img.id === id);
+  const canEditSelection = !selectionLocked || isOwner;
+  const myPickSet = new Set(myPicks);
 
   const resizeImage = (file, maxSize = 960) => new Promise((resolve) => {
     const img = new Image();
@@ -187,9 +194,10 @@ export default function Post() {
   // --- Snapshots ---
   const handleSaveSnapshot = async (e) => {
     e.preventDefault();
-    if (!selections.length) { showToast('셀렉된 이미지가 없습니다'); return; }
-    const name = snapshotName.trim() || `스냅샷 ${snapshots.length + 1}`;
-    const imageIds = selections.map((s) => s.image_id);
+    const isMyPick = selectionLocked && !isOwner;
+    const imageIds = isMyPick ? myPicks : selections.map((s) => s.image_id);
+    if (!imageIds.length) { showToast('셀렉된 이미지가 없습니다'); return; }
+    const name = snapshotName.trim() || (isMyPick ? `제안 ${snapshots.length + 1}` : `스냅샷 ${snapshots.length + 1}`);
     const { data } = await supabase.from('snapshots').insert({ post_id: postId, name, image_ids: imageIds }).select().single();
     if (data) setSnapshots((prev) => [...prev, data]);
     setSnapshotName('');
@@ -212,6 +220,27 @@ export default function Post() {
   const handleDeleteSnapshot = async (snapshot) => {
     setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
     await supabase.from('snapshots').delete().eq('id', snapshot.id);
+  };
+
+  // --- Selection Lock ---
+  const toggleLock = async () => {
+    const newLocked = !selectionLocked;
+    setSelectionLocked(newLocked);
+    await supabase.from('posts').update({ selection_locked: newLocked }).eq('id', postId);
+    showToast(newLocked ? '셀렉이 잠겼습니다' : '셀렉이 열렸습니다');
+  };
+
+  const handleMyPick = (imageId) => {
+    setMyPicks((prev) => {
+      const next = prev.includes(imageId) ? prev.filter((id) => id !== imageId) : [...prev, imageId];
+      sessionStorage.setItem(`picpic_mypicks_${postId}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const openMyPicksViewer = (startIndex = 0) => {
+    if (!myPicks.length) return;
+    setViewer({ mode: 'view', index: startIndex, imageIds: myPicks });
   };
 
   // --- Image Viewer ---
@@ -403,11 +432,17 @@ export default function Post() {
 
       <div className="section-label">
         셀렉됨 {selections.length > 0 && <span className="section-count">{selections.length}</span>}
+        {!isOwner && selectionLocked && <span className="lock-badge">잠김</span>}
+        {isOwner && (
+          <button className={`lock-toggle-btn${selectionLocked ? ' active' : ''}`} onClick={toggleLock}>
+            {selectionLocked ? '🔒 잠김' : '🔓 열림'}
+          </button>
+        )}
         {selections.length > 0 && <button className="viewer-open-btn" onClick={() => openSelectionViewer()}>보기</button>}
       </div>
-      <div className="selection-area" onDragOver={handleSelectionAreaDragOver} onDrop={handleSelectionAreaDrop}>
+      <div className="selection-area" onDragOver={canEditSelection ? handleSelectionAreaDragOver : undefined} onDrop={canEditSelection ? handleSelectionAreaDrop : undefined}>
         {selections.length === 0 ? (
-          <div className="selection-empty">아래에서 이미지를 탭하여 셀렉하세요</div>
+          <div className="selection-empty">{canEditSelection ? '아래에서 이미지를 탭하여 셀렉하세요' : '아직 셀렉된 이미지가 없습니다'}</div>
         ) : (
           <div className="selection-grid">
             {selections.map((sel, idx) => {
@@ -416,19 +451,19 @@ export default function Post() {
               return (
                 <div
                   key={sel.image_id}
-                  className={`selected-thumb${dragState.dragging === sel.image_id ? ' dragging' : ''}${dragState.over === sel.image_id && dragState.dragging !== sel.image_id ? ' drag-over' : ''}`}
+                  className={`selected-thumb${!canEditSelection ? ' read-only' : ''}${dragState.dragging === sel.image_id ? ' dragging' : ''}${dragState.over === sel.image_id && dragState.dragging !== sel.image_id ? ' drag-over' : ''}`}
                   data-image-id={sel.image_id}
-                  draggable
-                  onClick={() => handleDeselect(sel.image_id)}
-                  onDragStart={(e) => handleDragStart(e, sel.image_id)}
-                  onDragOver={(e) => handleDragOver(e, sel.image_id)}
-                  onDragEnd={handleDragEnd}
-                  onDrop={(e) => handleDrop(e, sel.image_id)}
-                  onTouchStart={(e) => handleTouchStart(e, sel.image_id)}
+                  draggable={canEditSelection}
+                  onClick={canEditSelection ? () => handleDeselect(sel.image_id) : undefined}
+                  onDragStart={canEditSelection ? (e) => handleDragStart(e, sel.image_id) : undefined}
+                  onDragOver={canEditSelection ? (e) => handleDragOver(e, sel.image_id) : undefined}
+                  onDragEnd={canEditSelection ? handleDragEnd : undefined}
+                  onDrop={canEditSelection ? (e) => handleDrop(e, sel.image_id) : undefined}
+                  onTouchStart={canEditSelection ? (e) => handleTouchStart(e, sel.image_id) : undefined}
                 >
                   <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
                   <span className="selected-order">{idx + 1}</span>
-                  <span className="selected-remove">×</span>
+                  {canEditSelection && <span className="selected-remove">×</span>}
                 </div>
               );
             })}
@@ -436,10 +471,41 @@ export default function Post() {
         )}
       </div>
 
+      {/* My Picks - when locked + non-owner */}
+      {selectionLocked && !isOwner && (
+        <>
+          <div className="section-label">
+            내 셀렉 {myPicks.length > 0 && <span className="section-count mypick-count">{myPicks.length}</span>}
+            {myPicks.length > 0 && <button className="viewer-open-btn" onClick={() => openMyPicksViewer()}>보기</button>}
+          </div>
+          <div className="selection-area mypick-area">
+            {myPicks.length === 0 ? (
+              <div className="selection-empty">아래에서 이미지를 탭하여 내 셀렉을 만드세요</div>
+            ) : (
+              <div className="selection-grid">
+                {myPicks.map((imageId, idx) => {
+                  const img = getImageById(imageId);
+                  if (!img) return null;
+                  return (
+                    <div key={imageId} className="selected-thumb" onClick={() => handleMyPick(imageId)}>
+                      <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
+                      <span className="selected-order mypick-order">{idx + 1}</span>
+                      <span className="selected-remove">×</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       {/* Snapshot controls */}
       <div className="snapshot-bar">
-        {selections.length > 0 && (
-          <button className="snapshot-save-btn" onClick={() => setShowSnapshotSave(true)}>현재 셀렉 저장</button>
+        {((selectionLocked && !isOwner) ? myPicks.length > 0 : selections.length > 0) && (
+          <button className="snapshot-save-btn" onClick={() => setShowSnapshotSave(true)}>
+            {(selectionLocked && !isOwner) ? '내 셀렉 저장' : '현재 셀렉 저장'}
+          </button>
         )}
       </div>
 
@@ -487,8 +553,8 @@ export default function Post() {
             {images.map((img) => (
               <div
                 key={img.id}
-                className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}`}
-                onClick={() => handleSelect(img.id)}
+                className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}`}
+                onClick={() => (selectionLocked && !isOwner) ? handleMyPick(img.id) : handleSelect(img.id)}
                 draggable={!selectedImageIds.has(img.id)}
                 onDragStart={(e) => handlePoolDragStart(e, img.id)}
               >
@@ -535,12 +601,16 @@ export default function Post() {
       {showSnapshotSave && (
         <div className="modal-overlay" onClick={() => setShowSnapshotSave(false)}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSaveSnapshot}>
-            <div className="modal-title">스냅샷 저장</div>
-            <div className="modal-desc">현재 셀렉 ({selections.length}장)을 스냅샷으로 저장합니다</div>
+            <div className="modal-title">{(selectionLocked && !isOwner) ? '내 셀렉 저장' : '스냅샷 저장'}</div>
+            <div className="modal-desc">
+              {(selectionLocked && !isOwner)
+                ? `내 셀렉 (${myPicks.length}장)을 스냅샷으로 저장합니다`
+                : `현재 셀렉 (${selections.length}장)을 스냅샷으로 저장합니다`}
+            </div>
             <input
               className="home-input"
               type="text"
-              placeholder={`스냅샷 ${snapshots.length + 1}`}
+              placeholder={(selectionLocked && !isOwner) ? `제안 ${snapshots.length + 1}` : `스냅샷 ${snapshots.length + 1}`}
               value={snapshotName}
               onChange={(e) => setSnapshotName(e.target.value)}
               autoFocus
