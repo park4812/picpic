@@ -20,10 +20,11 @@ export default function Post() {
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotName, setSnapshotName] = useState('');
   const [showSnapshotSave, setShowSnapshotSave] = useState(false);
-  const [compareSnapshot, setCompareSnapshot] = useState(null);
+  const [viewer, setViewer] = useState(null);
   const [justSelected, setJustSelected] = useState(null);
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
+  const viewerTouchRef = useRef({ startX: 0, startY: 0 });
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -204,7 +205,7 @@ export default function Post() {
     }));
     if (rows.length) await supabase.from('selections').insert(rows);
     setSelections(rows);
-    setCompareSnapshot(null);
+    setViewer(null);
     showToast(`"${snapshot.name}" 불러옴`);
   };
 
@@ -212,6 +213,33 @@ export default function Post() {
     setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
     await supabase.from('snapshots').delete().eq('id', snapshot.id);
   };
+
+  // --- Image Viewer ---
+  const openSelectionViewer = (startIndex = 0) => {
+    if (!selections.length) return;
+    setViewer({ mode: 'view', index: startIndex, imageIds: selections.map((s) => s.image_id) });
+  };
+
+  const openCompareViewer = (snapshot) => {
+    setViewer({
+      mode: 'compare', index: 0,
+      imageIds: selections.map((s) => s.image_id),
+      compareImageIds: snapshot.image_ids,
+      snapshotName: snapshot.name,
+    });
+  };
+
+  const navigateViewer = useCallback((dir) => {
+    setViewer((prev) => {
+      if (!prev) return null;
+      const total = prev.mode === 'compare'
+        ? Math.max(prev.imageIds.length, prev.compareImageIds.length)
+        : prev.imageIds.length;
+      const next = prev.index + dir;
+      if (next < 0 || next >= total) return prev;
+      return { ...prev, index: next };
+    });
+  }, []);
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -313,15 +341,27 @@ export default function Post() {
   }, [handleTouchMove, handleTouchEnd]);
 
   useEffect(() => {
-    const handleEsc = (e) => {
+    const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        if (showSnapshotSave) setShowSnapshotSave(false);
+        if (viewer) setViewer(null);
+        else if (showSnapshotSave) setShowSnapshotSave(false);
         else if (showPasswordModal) setShowPasswordModal(false);
       }
+      if (viewer) {
+        if (e.key === 'ArrowLeft') navigateViewer(-1);
+        if (e.key === 'ArrowRight') navigateViewer(1);
+      }
     };
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [showSnapshotSave, showPasswordModal]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [viewer, showSnapshotSave, showPasswordModal, navigateViewer]);
+
+  useEffect(() => {
+    if (viewer) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [viewer]);
 
   // --- Pool drag to selection ---
   const handlePoolDragStart = (e, imageId) => {
@@ -363,6 +403,7 @@ export default function Post() {
 
       <div className="section-label">
         셀렉됨 {selections.length > 0 && <span className="section-count">{selections.length}</span>}
+        {selections.length > 0 && <button className="viewer-open-btn" onClick={() => openSelectionViewer()}>보기</button>}
       </div>
       <div className="selection-area" onDragOver={handleSelectionAreaDragOver} onDrop={handleSelectionAreaDrop}>
         {selections.length === 0 ? (
@@ -410,7 +451,7 @@ export default function Post() {
           </div>
           <div className="snapshot-list">
             {snapshots.map((snap) => (
-              <div key={snap.id} className={`snapshot-card${compareSnapshot?.id === snap.id ? ' active' : ''}`}>
+              <div key={snap.id} className="snapshot-card">
                 <div className="snapshot-card-header">
                   <span className="snapshot-card-name">{snap.name}</span>
                   <span className="snapshot-card-count">{snap.image_ids.length}장</span>
@@ -423,9 +464,7 @@ export default function Post() {
                   {snap.image_ids.length > 5 && <span className="snapshot-more">+{snap.image_ids.length - 5}</span>}
                 </div>
                 <div className="snapshot-card-actions">
-                  <button onClick={() => setCompareSnapshot(compareSnapshot?.id === snap.id ? null : snap)}>
-                    {compareSnapshot?.id === snap.id ? '닫기' : '비교'}
-                  </button>
+                  <button onClick={() => openCompareViewer(snap)}>비교</button>
                   <button onClick={() => handleLoadSnapshot(snap)}>불러오기</button>
                   {isOwner && <button className="danger" onClick={() => handleDeleteSnapshot(snap)}>삭제</button>}
                 </div>
@@ -433,27 +472,6 @@ export default function Post() {
             ))}
           </div>
         </>
-      )}
-
-      {/* Compare view */}
-      {compareSnapshot && (
-        <div className="compare-section">
-          <div className="section-label">비교: {compareSnapshot.name}</div>
-          <div className="selection-area">
-            <div className="selection-grid">
-              {compareSnapshot.image_ids.map((imgId, idx) => {
-                const img = getImageById(imgId);
-                if (!img) return null;
-                return (
-                  <div key={imgId} className="selected-thumb">
-                    <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
-                    <span className="selected-order">{idx + 1}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       )}
 
       <div className="section-label">
@@ -534,6 +552,81 @@ export default function Post() {
           </form>
         </div>
       )}
+
+      {viewer && (() => {
+        const total = viewer.mode === 'compare'
+          ? Math.max(viewer.imageIds.length, viewer.compareImageIds.length)
+          : viewer.imageIds.length;
+        return (
+          <div
+            className="viewer-overlay"
+            onTouchStart={(e) => {
+              viewerTouchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY };
+            }}
+            onTouchEnd={(e) => {
+              const dx = e.changedTouches[0].clientX - viewerTouchRef.current.startX;
+              const dy = e.changedTouches[0].clientY - viewerTouchRef.current.startY;
+              if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+                e.preventDefault();
+                navigateViewer(dx > 0 ? -1 : 1);
+              }
+            }}
+          >
+            <div className="viewer-header">
+              <div style={{ width: 44 }} />
+              <div className="viewer-counter">
+                {viewer.mode === 'compare' && <span className="viewer-mode-label">비교 · </span>}
+                {viewer.index + 1} / {total}
+              </div>
+              <button className="viewer-close" onClick={() => setViewer(null)} aria-label="닫기">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="viewer-body">
+              {viewer.mode === 'view' ? (() => {
+                const img = getImageById(viewer.imageIds[viewer.index]);
+                return img
+                  ? <img src={storageUrl(img.storage_path)} alt="" />
+                  : <div className="viewer-empty">이미지를 찾을 수 없습니다</div>;
+              })() : (
+                <div className="viewer-compare">
+                  <div className="viewer-compare-panel">
+                    <span className="viewer-compare-label">현재 셀렉</span>
+                    {(() => {
+                      const imgId = viewer.imageIds[viewer.index];
+                      const img = imgId ? getImageById(imgId) : null;
+                      return img
+                        ? <img src={storageUrl(img.storage_path)} alt="" />
+                        : <div className="viewer-empty">—</div>;
+                    })()}
+                  </div>
+                  <div className="viewer-compare-divider" />
+                  <div className="viewer-compare-panel">
+                    <span className="viewer-compare-label">{viewer.snapshotName}</span>
+                    {(() => {
+                      const imgId = viewer.compareImageIds[viewer.index];
+                      const img = imgId ? getImageById(imgId) : null;
+                      return img
+                        ? <img src={storageUrl(img.storage_path)} alt="" />
+                        : <div className="viewer-empty">—</div>;
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <button className="viewer-nav prev" disabled={viewer.index === 0} onClick={(e) => { e.stopPropagation(); navigateViewer(-1); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <button className="viewer-nav next" disabled={viewer.index >= total - 1} onClick={(e) => { e.stopPropagation(); navigateViewer(1); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 6 15 12 9 18" /></svg>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
