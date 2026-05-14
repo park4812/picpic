@@ -56,11 +56,19 @@ export default function Post() {
         setIsOwner(true);
         // Auto-link: user is logged in + has password auth + post not linked yet
         if (user && !postData.user_id) {
-          supabase.from('posts').update({ user_id: user.id, creator_email: user.email }).eq('id', postId).then(({ error: linkErr }) => {
-            if (!linkErr && !cancelled) {
-              setPost((prev) => prev ? { ...prev, user_id: user.id } : prev);
-            }
-          });
+          const { data: linked, error: linkErr } = await supabase
+            .from('posts')
+            .update({ user_id: user.id, creator_email: user.email })
+            .eq('id', postId)
+            .select('user_id')
+            .maybeSingle();
+          if (linkErr) {
+            console.error('auto-link error:', linkErr.message, linkErr);
+          } else if (!linked) {
+            console.error('auto-link: update returned 0 rows (possible RLS block)');
+          } else if (!cancelled) {
+            setPost((prev) => prev ? { ...prev, user_id: user.id } : prev);
+          }
         }
       }
       // Update last accessed timestamp (fire and forget)
@@ -105,8 +113,21 @@ export default function Post() {
     if (user) {
       // Logged in → link directly
       (async () => {
-        const { error } = await supabase.from('posts').update({ user_id: user.id, creator_email: user.email }).eq('id', postId);
-        if (error) { showToast('연결 실패'); return; }
+        const { data: linked, error } = await supabase
+          .from('posts')
+          .update({ user_id: user.id, creator_email: user.email })
+          .eq('id', postId)
+          .select('user_id')
+          .maybeSingle();
+        if (error) {
+          console.error('link failed:', error);
+          showToast(`연결 실패: ${error.message}`);
+          return;
+        }
+        if (!linked) {
+          showToast('연결 실패: 권한 없음 (RLS)');
+          return;
+        }
         setPost((prev) => ({ ...prev, user_id: user.id }));
         showToast('내 계정에 연결됨');
       })();
