@@ -81,7 +81,7 @@ export default function Admin() {
   const loadPosts = async () => {
     const { data: postsData } = await supabase
       .from('posts')
-      .select('id, title, created_at, last_accessed_at')
+      .select('id, title, created_at, last_accessed_at, user_id, creator_email')
       .order('created_at', { ascending: false });
 
     if (!postsData) return;
@@ -189,6 +189,13 @@ export default function Admin() {
             <div key={post.id} className="admin-item">
               <Link to={`/p/${post.id}`} className="admin-item-info">
                 <div className="admin-item-title">{post.title}</div>
+                <div className="admin-item-creator">
+                  {post.creator_email
+                    ? post.creator_email
+                    : post.user_id
+                      ? '계정 연결됨'
+                      : '비회원 (비밀번호)'}
+                </div>
                 <div className="admin-item-counts">
                   사진 {post.imageCount}장 · 셀렉 {post.selectionCount}장
                 </div>

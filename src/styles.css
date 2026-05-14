@@ -947,6 +947,15 @@ body {
   margin-top: 4px;
 }
 
+.admin-item-creator {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .admin-item-counts {
   font-size: 13px;
   color: var(--text-dim);

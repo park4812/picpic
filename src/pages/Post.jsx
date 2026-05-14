@@ -56,7 +56,7 @@ export default function Post() {
         setIsOwner(true);
         // Auto-link: user is logged in + has password auth + post not linked yet
         if (user && !postData.user_id) {
-          supabase.from('posts').update({ user_id: user.id }).eq('id', postId).then(({ error: linkErr }) => {
+          supabase.from('posts').update({ user_id: user.id, creator_email: user.email }).eq('id', postId).then(({ error: linkErr }) => {
             if (!linkErr && !cancelled) {
               setPost((prev) => prev ? { ...prev, user_id: user.id } : prev);
             }
@@ -105,7 +105,7 @@ export default function Post() {
     if (user) {
       // Logged in → link directly
       (async () => {
-        const { error } = await supabase.from('posts').update({ user_id: user.id }).eq('id', postId);
+        const { error } = await supabase.from('posts').update({ user_id: user.id, creator_email: user.email }).eq('id', postId);
         if (error) { showToast('연결 실패'); return; }
         setPost((prev) => ({ ...prev, user_id: user.id }));
         showToast('내 계정에 연결됨');

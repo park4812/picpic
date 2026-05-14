@@ -22,6 +22,7 @@ export default function Home() {
       const row = { id, title: title.trim() };
       if (user) {
         row.user_id = user.id;
+        row.creator_email = user.email;
       } else {
         row.password_hash = await hashPassword(password);
       }
