@@ -129,6 +129,10 @@ body {
   font-weight: 600;
   flex: 1;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
 }
 
 .online-badge {
@@ -399,6 +403,13 @@ body {
   justify-content: center;
   border: none;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pool-thumb:hover .delete-btn,
+.pool-thumb:active .delete-btn {
+  opacity: 1;
 }
 
 .pool-thumb .delete-btn:active {

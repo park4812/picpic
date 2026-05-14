@@ -28,6 +28,7 @@ export default function Post() {
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
   const viewerTouchRef = useRef({ startX: 0, startY: 0 });
+  const poolLongPress = useRef({ timer: null, triggered: false });
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -555,11 +556,23 @@ export default function Post() {
           </div>
         ) : (
           <div className="pool-grid">
-            {images.map((img) => (
+            {images.map((img, imgIdx) => (
               <div
                 key={img.id}
                 className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}`}
-                onClick={() => (selectionLocked && !isOwner) ? handleMyPick(img.id) : handleSelect(img.id)}
+                onClick={() => {
+                  if (poolLongPress.current.triggered) { poolLongPress.current.triggered = false; return; }
+                  (selectionLocked && !isOwner) ? handleMyPick(img.id) : handleSelect(img.id);
+                }}
+                onPointerDown={() => {
+                  poolLongPress.current.triggered = false;
+                  poolLongPress.current.timer = setTimeout(() => {
+                    poolLongPress.current.triggered = true;
+                    setViewer({ mode: 'view', index: imgIdx, imageIds: images.map((i) => i.id) });
+                  }, 400);
+                }}
+                onPointerUp={() => clearTimeout(poolLongPress.current.timer)}
+                onPointerLeave={() => clearTimeout(poolLongPress.current.timer)}
                 draggable={!selectedImageIds.has(img.id)}
                 onDragStart={(e) => handlePoolDragStart(e, img.id)}
               >
