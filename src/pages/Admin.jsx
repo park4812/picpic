@@ -79,10 +79,12 @@ export default function Admin() {
   };
 
   const loadPosts = async () => {
-    const { data: postsData } = await supabase
+    const { data: postsData, error: postsErr } = await supabase
       .from('posts')
-      .select('id, title, created_at, last_accessed_at, user_id, creator_email')
+      .select('*')
       .order('created_at', { ascending: false });
+
+    if (postsErr) { console.error('loadPosts error', postsErr); return; }
 
     if (!postsData) return;
 

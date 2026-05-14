@@ -29,12 +29,13 @@ export default function MyPosts() {
   }, [user]);
 
   const loadPosts = async () => {
-    const { data: postsData } = await supabase
+    const { data: postsData, error: postsErr } = await supabase
       .from('posts')
-      .select('id, title, created_at, last_accessed_at')
+      .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
+    if (postsErr) { console.error('loadPosts error', postsErr); setLoading(false); return; }
     if (!postsData) { setLoading(false); return; }
 
     const withStats = await Promise.all(

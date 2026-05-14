@@ -43,7 +43,7 @@ export default function Post() {
     let cancelled = false;
     async function load() {
       const { data: postData, error } = await supabase
-        .from('posts').select('id, title, created_at, selection_locked, user_id, password_hash').eq('id', postId).single();
+        .from('posts').select('*').eq('id', postId).single();
       if (cancelled) return;
       if (error || !postData) { setNotFound(true); setLoading(false); return; }
       setPost(postData);
