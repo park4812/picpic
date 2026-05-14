@@ -79,6 +79,9 @@ export default function Post() {
         supabase.from('snapshots').select('*').eq('post_id', postId).order('created_at'),
       ]);
       if (cancelled) return;
+      if (imgRes.error) console.error('images load error:', imgRes.error);
+      if (selRes.error) console.error('selections load error:', selRes.error);
+      if (snapRes.error) console.error('snapshots load error:', snapRes.error);
       setImages(imgRes.data || []);
       setSelections(selRes.data || []);
       setSnapshots(snapRes.data || []);
@@ -228,13 +231,15 @@ export default function Post() {
   const handleSelect = async (imageId) => {
     if (selectedImageIds.has(imageId)) {
       setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
-      await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
+      const { error } = await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
+      if (error) { console.error('deselect error:', error); showToast('셀렉 해제 실패: ' + error.message); }
     } else {
       const maxPos = selections.length > 0 ? Math.max(...selections.map((s) => s.position)) + 1 : 0;
       setSelections((prev) => [...prev, { post_id: postId, image_id: imageId, position: maxPos }]);
       setJustSelected(imageId);
       setTimeout(() => setJustSelected(null), 300);
-      await supabase.from('selections').insert({ post_id: postId, image_id: imageId, position: maxPos });
+      const { error } = await supabase.from('selections').insert({ post_id: postId, image_id: imageId, position: maxPos });
+      if (error) { console.error('select error:', error); showToast('셀렉 실패: ' + error.message); }
     }
   };
 
