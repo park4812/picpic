@@ -53,6 +53,7 @@ export default function Home() {
         </button>
       </form>
       <Link to="/admin" className="home-admin-link">게시물 관리</Link>
+      <Link to="/recruit" className="home-recruit-link">모집 팜플렛</Link>
       <footer className="home-footer">
         <a href="https://instagram.com/walk.and.look" target="_blank" rel="noopener noreferrer" className="home-insta">@walk.and.look</a>
         <span className="home-copyright">Made by walk.and.look · © 2026</span>

@@ -1079,6 +1079,170 @@ body {
   inset: auto;
 }
 
+/* Recruit Page */
+.recruit-page {
+  min-height: 100dvh;
+  padding-bottom: 32px;
+}
+
+.recruit-form {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recruit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recruit-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.recruit-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.recruit-input:focus {
+  border-color: var(--accent);
+}
+
+.recruit-input::placeholder {
+  color: #555;
+}
+
+.recruit-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.recruit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(transparent, var(--bg) 20%);
+  padding-top: 32px;
+}
+
+.recruit-filled {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.recruit-preview-btn {
+  padding: 12px 28px;
+  font-size: 15px;
+  border-radius: 12px;
+}
+
+/* Recruit Preview Modal */
+.recruit-preview {
+  width: 92vw;
+  max-width: 420px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeUp 0.2s ease;
+}
+
+.recruit-preview-card {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+}
+
+.recruit-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.recruit-export-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.recruit-export-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.recruit-export-btn:active {
+  background: var(--surface-hover);
+}
+
+.recruit-export-btn.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.recruit-export-btn.accent:active {
+  background: #2563eb;
+}
+
+.recruit-close-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Home recruit link */
+.home-recruit-link {
+  margin-top: 12px;
+  padding: 10px 24px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.home-recruit-link:active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* Responsive */
 @media (min-width: 768px) {
   .selection-grid {
