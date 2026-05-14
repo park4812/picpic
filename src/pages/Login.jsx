@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../auth';
 
 export default function Login() {
@@ -11,6 +11,8 @@ export default function Login() {
   const [signupDone, setSignupDone] = useState(false);
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,7 +27,7 @@ export default function Login() {
         // Try auto-login (if email confirmation is disabled)
         const { error: loginErr } = await signIn(email, password);
         if (!loginErr) {
-          navigate('/');
+          navigate(redirectTo);
           return;
         }
         // If confirmation is required
@@ -33,7 +35,7 @@ export default function Login() {
       } else {
         const { error: err } = await signIn(email, password);
         if (err) throw err;
-        navigate('/');
+        navigate(redirectTo);
       }
     } catch (err) {
       const msg = err.message || '오류가 발생했습니다';

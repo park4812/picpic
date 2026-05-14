@@ -3,6 +3,26 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { hashPassword } from '../crypto';
 
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
+    + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function relativeDate(dateStr) {
+  if (!dateStr) return '없음';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '방금';
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}일 전`;
+  return formatDate(dateStr);
+}
+
 export default function Admin() {
   const [authed, setAuthed] = useState(false);
   const [hasPassword, setHasPassword] = useState(null);
@@ -60,20 +80,32 @@ export default function Admin() {
 
   const loadPosts = async () => {
     const { data: postsData } = await supabase
-      .from('posts').select('id, title, created_at').order('created_at', { ascending: false });
+      .from('posts')
+      .select('id, title, created_at, last_accessed_at')
+      .order('created_at', { ascending: false });
 
     if (!postsData) return;
 
-    const withCounts = await Promise.all(
+    const withStats = await Promise.all(
       postsData.map(async (post) => {
-        const { count: imageCount } = await supabase
-          .from('images').select('*', { count: 'exact', head: true }).eq('post_id', post.id);
-        const { count: selectionCount } = await supabase
-          .from('selections').select('*', { count: 'exact', head: true }).eq('post_id', post.id);
-        return { ...post, imageCount: imageCount || 0, selectionCount: selectionCount || 0 };
+        const [
+          { count: imageCount },
+          { count: selectionCount },
+          { data: latestImg },
+        ] = await Promise.all([
+          supabase.from('images').select('*', { count: 'exact', head: true }).eq('post_id', post.id),
+          supabase.from('selections').select('*', { count: 'exact', head: true }).eq('post_id', post.id),
+          supabase.from('images').select('created_at').eq('post_id', post.id).order('created_at', { ascending: false }).limit(1),
+        ]);
+        return {
+          ...post,
+          imageCount: imageCount || 0,
+          selectionCount: selectionCount || 0,
+          lastImageAt: latestImg?.[0]?.created_at || null,
+        };
       })
     );
-    setPosts(withCounts);
+    setPosts(withStats);
   };
 
   const handleDelete = async (post) => {
@@ -157,8 +189,13 @@ export default function Admin() {
             <div key={post.id} className="admin-item">
               <Link to={`/p/${post.id}`} className="admin-item-info">
                 <div className="admin-item-title">{post.title}</div>
-                <div className="admin-item-meta">
-                  {new Date(post.created_at).toLocaleDateString('ko-KR')} · 사진 {post.imageCount}장 · 셀렉 {post.selectionCount}장
+                <div className="admin-item-counts">
+                  사진 {post.imageCount}장 · 셀렉 {post.selectionCount}장
+                </div>
+                <div className="admin-item-dates">
+                  <span>생성 {formatDate(post.created_at)}</span>
+                  <span>사진 {post.lastImageAt ? relativeDate(post.lastImageAt) : '없음'}</span>
+                  <span>접속 {post.last_accessed_at ? relativeDate(post.last_accessed_at) : '없음'}</span>
                 </div>
               </Link>
               <button

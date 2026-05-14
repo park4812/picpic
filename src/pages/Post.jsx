@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase, generateId, storageUrl } from '../supabase';
 import { hashPassword } from '../crypto';
 import { useAuth } from '../auth';
@@ -7,10 +7,10 @@ import { useAuth } from '../auth';
 export default function Post() {
   const { postId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [canLinkAccount, setCanLinkAccount] = useState(false); // show "계정 연결" button
   const [passwordInput, setPasswordInput] = useState('');
   const [images, setImages] = useState([]);
   const [selections, setSelections] = useState([]);
@@ -54,9 +54,9 @@ export default function Post() {
         setIsOwner(true);
       } else if (sessionAuth) {
         setIsOwner(true);
-        // If logged in but post not linked to account → can link
-        if (user && !postData.user_id) setCanLinkAccount(true);
       }
+      // Update last accessed timestamp (fire and forget)
+      supabase.from('posts').update({ last_accessed_at: new Date().toISOString() }).eq('id', postId).then();
       const [imgRes, selRes, snapRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
         supabase.from('selections').select('*').eq('post_id', postId).order('position'),
@@ -84,20 +84,28 @@ export default function Post() {
       setShowPasswordModal(false);
       setPasswordInput('');
       showToast('관리자 모드 활성화');
-      // If logged in but post not linked → allow linking
-      if (user && !post?.user_id) setCanLinkAccount(true);
     } else {
       showToast('비밀번호가 틀렸습니다');
     }
   };
 
-  const handleLinkAccount = async () => {
-    if (!user || !post) return;
-    const { error } = await supabase.from('posts').update({ user_id: user.id }).eq('id', postId);
-    if (error) { showToast('연결 실패'); return; }
-    setPost((prev) => ({ ...prev, user_id: user.id }));
-    setCanLinkAccount(false);
-    showToast('내 계정에 연결됨');
+  // Derived: show "계정 연결" when owner via password but post not linked to any account
+  const canLinkAccount = isOwner && post && !post.user_id;
+
+  const handleLinkAccount = () => {
+    if (!post) return;
+    if (user) {
+      // Logged in → link directly
+      (async () => {
+        const { error } = await supabase.from('posts').update({ user_id: user.id }).eq('id', postId);
+        if (error) { showToast('연결 실패'); return; }
+        setPost((prev) => ({ ...prev, user_id: user.id }));
+        showToast('내 계정에 연결됨');
+      })();
+    } else {
+      // Not logged in → go to login, then come back
+      navigate(`/login?redirect=/p/${postId}`);
+    }
   };
 
   useEffect(() => {
@@ -452,7 +460,7 @@ export default function Post() {
             <button className="share-btn link-btn" onClick={handleLinkAccount}>계정 연결</button>
           )}
           <button className={`share-btn auth-btn${isOwner ? ' authed' : ''}`} onClick={isOwner
-            ? () => { setIsOwner(false); setCanLinkAccount(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('관리자 해제'); }
+            ? () => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('관리자 해제'); }
             : () => setShowPasswordModal(true)
           }>{isOwner ? '관리자' : '인증'}</button>
           <button className="share-btn" onClick={handleShare} aria-label="공유">

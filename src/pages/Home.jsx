@@ -14,12 +14,13 @@ export default function Home() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
+    if (!title.trim()) return;
     // Not logged in requires password
     if (!user && !password.trim()) return;
     setLoading(true);
     try {
       const id = generateId();
-      const row = { id, title: title || 'Untitled' };
+      const row = { id, title: title.trim() };
       if (user) {
         // Logged in: link to account, no password needed
         row.user_id = user.id;
@@ -38,7 +39,7 @@ export default function Home() {
     }
   };
 
-  const canSubmit = user ? true : password.trim();
+  const canSubmit = title.trim() && (user ? true : password.trim());
 
   return (
     <div className="home">
