@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase, generateId } from '../supabase';
 import { hashPassword } from '../crypto';
@@ -8,8 +8,14 @@ export default function Home() {
   const [title, setTitle] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,11 +39,16 @@ export default function Home() {
     } catch (err) {
       console.error(err);
       setLoading(false);
-      alert('게시물 생성에 실패했습니다. 다시 시도해주세요.');
+      showToast('게시물 생성에 실패했습니다');
     }
   };
 
   const canSubmit = title.trim() && (user ? true : password.trim());
+
+  // Auth still loading
+  if (user === undefined) {
+    return <div className="home"><div className="home-logo">PicPic</div></div>;
+  }
 
   return (
     <div className="home">
@@ -113,6 +124,7 @@ export default function Home() {
         <span className="home-copyright">Made by walk.and.look · © 2026</span>
         <Link to="/admin" className="home-admin-login">관리자 로그인</Link>
       </footer>
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

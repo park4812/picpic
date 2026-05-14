@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Recruit from './pages/Recruit';
 import MyPamphlets from './pages/MyPamphlets';
 import MyPosts from './pages/MyPosts';
+import NotFound from './pages/NotFound';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/recruit/:pamId" element={<Recruit />} />
           <Route path="/my-pamphlets" element={<MyPamphlets />} />
           <Route path="/my-posts" element={<MyPosts />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

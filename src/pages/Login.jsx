@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../auth';
 
@@ -9,10 +9,15 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/';
+
+  // Already logged in → redirect
+  useEffect(() => {
+    if (user) navigate(redirectTo, { replace: true });
+  }, [user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -662,13 +662,15 @@ export default function Post() {
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handlePasswordSubmit}>
             <div className="modal-title">관리자 인증</div>
             <div className="modal-desc">
-              {post?.user_id
-                ? '이 게시물은 계정에 연결되어 있습니다. 로그인하거나 비밀번호로 인증하세요.'
-                : '비밀번호를 입력하면 사진 관리, 셀렉 편집, 잠금 설정이 가능합니다'}
+              {user && post?.user_id && post.user_id !== user.id
+                ? '이 게시물은 다른 계정에 연결되어 있습니다.'
+                : !user
+                  ? '로그인하거나 비밀번호로 인증하세요'
+                  : '비밀번호를 입력하면 관리할 수 있습니다'}
             </div>
             {!user && (
               <Link
-                to="/login"
+                to={`/login?redirect=/p/${postId}`}
                 className="btn-primary"
                 style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}
                 onClick={() => setShowPasswordModal(false)}
@@ -685,7 +687,7 @@ export default function Post() {
                   placeholder="관리 비밀번호"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  autoFocus={!!user}
+                  autoFocus
                 />
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
@@ -693,7 +695,7 @@ export default function Post() {
                 </div>
               </>
             )}
-            {!post?.password_hash && user && (
+            {!post?.password_hash && (
               <div style={{ display: 'flex', gap: '8px', marginTop: 8 }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>취소</button>
               </div>

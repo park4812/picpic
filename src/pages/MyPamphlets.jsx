@@ -11,7 +11,7 @@ export default function MyPamphlets() {
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
-    if (user === null) { navigate('/login'); return; }
+    if (user === null) { navigate('/login?redirect=/my-pamphlets', { replace: true }); return; }
     if (user === undefined) return; // still loading auth
     loadPamphlets();
   }, [user]);
@@ -28,6 +28,7 @@ export default function MyPamphlets() {
 
   const handleDelete = async (id) => {
     if (deleting) return;
+    if (!confirm('이 팜플렛을 삭제할까요?')) return;
     setDeleting(id);
     // Delete cover image from storage
     await supabase.storage.from('pamphlet-covers').remove([`${user.id}/${id}`]);

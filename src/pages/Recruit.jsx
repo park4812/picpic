@@ -166,7 +166,7 @@ export default function Recruit() {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (user === null) navigate('/login');
+    if (user === null) navigate(`/login?redirect=${pamId ? `/recruit/${pamId}` : '/recruit'}`, { replace: true });
   }, [user]);
 
   // Load existing pamphlet
