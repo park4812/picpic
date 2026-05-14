@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabase';
+import { useAuth } from '../auth';
 
 const DEFAULT = {
   concept: '',
@@ -39,17 +41,15 @@ function drawCard(canvas, form, coverImg) {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  // Accent gradient (reused)
   const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
   accentGrad.addColorStop(0, '#3b82f6');
   accentGrad.addColorStop(0.5, '#8b5cf6');
   accentGrad.addColorStop(1, '#ec4899');
 
-  const IMG_H = 780; // cover image area height
-  let contentY; // where text content starts
+  const IMG_H = 780;
+  let contentY;
 
   if (coverImg) {
-    // Draw cover image (cover fit)
     const iw = coverImg.naturalWidth || coverImg.width;
     const ih = coverImg.naturalHeight || coverImg.height;
     const scale = Math.max(W / iw, IMG_H / ih);
@@ -57,18 +57,15 @@ function drawCard(canvas, form, coverImg) {
     const sx = (W - sw) / 2, sy = (IMG_H - sh) / 2;
     ctx.drawImage(coverImg, sx, sy, sw, sh);
 
-    // Gradient overlay on image bottom
     const fadeGrad = ctx.createLinearGradient(0, IMG_H * 0.4, 0, IMG_H);
     fadeGrad.addColorStop(0, 'rgba(10,10,10,0)');
     fadeGrad.addColorStop(1, '#0a0a0a');
     ctx.fillStyle = fadeGrad;
     ctx.fillRect(0, 0, W, IMG_H);
 
-    // Dark background below image
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, IMG_H, W, H - IMG_H);
 
-    // Title on gradient overlay
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'center';
@@ -77,13 +74,10 @@ function drawCard(canvas, form, coverImg) {
     ctx.fillText('📷 촬영 모델 모집', W / 2, IMG_H - 40);
     ctx.shadowBlur = 0;
 
-    // Accent line under title
     ctx.fillStyle = accentGrad;
     ctx.fillRect(80, IMG_H + 10, W - 160, 3);
-
     contentY = IMG_H + 60;
   } else {
-    // No image: original dark layout
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, '#0a0a0a');
     grad.addColorStop(0.5, '#111118');
@@ -91,28 +85,23 @@ function drawCard(canvas, form, coverImg) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // Accent line top
     ctx.fillStyle = accentGrad;
     ctx.fillRect(0, 0, W, 6);
 
-    // Title
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 64px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('📷 촬영 모델 모집', W / 2, 140);
 
-    // Divider
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(80, 190);
     ctx.lineTo(W - 80, 190);
     ctx.stroke();
-
     contentY = 280;
   }
 
-  // Fields
   let y = contentY;
   const LX = 100;
   const MAX_W = W - 200;
@@ -121,14 +110,12 @@ function drawCard(canvas, form, coverImg) {
     const value = form[key]?.trim();
     if (!value) return;
 
-    // Label
     ctx.fillStyle = '#888';
     ctx.font = '500 32px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(`${icon}  ${label}`, LX, y);
     y += 52;
 
-    // Value (word wrap)
     ctx.fillStyle = '#fff';
     ctx.font = '400 38px -apple-system, BlinkMacSystemFont, sans-serif';
     const words = value.split('');
@@ -144,29 +131,69 @@ function drawCard(canvas, form, coverImg) {
       }
     }
     if (line) { ctx.fillText(line, LX, y); y += 52; }
-
     y += 28;
   });
 
-  // Bottom accent line
   ctx.fillStyle = accentGrad;
   ctx.fillRect(0, H - 6, W, 6);
 
-  // Watermark
   ctx.fillStyle = '#444';
   ctx.font = '400 28px -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('PicPic', W / 2, H - 40);
 }
 
+/* ─── Component ─── */
+
 export default function Recruit() {
+  const { pamId } = useParams(); // undefined = new
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [form, setForm] = useState(DEFAULT);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [toast, setToast] = useState(null);
-  const [coverSrc, setCoverSrc] = useState(null);   // data URL string
-  const [coverImg, setCoverImg] = useState(null);    // loaded Image element
+  const [coverSrc, setCoverSrc] = useState(null);
+  const [coverImg, setCoverImg] = useState(null);
+  const [coverFile, setCoverFile] = useState(null); // File object for upload
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState(pamId || null);
+  const [isDraft, setIsDraft] = useState(true);
+  const [loaded, setLoaded] = useState(!pamId); // true if new
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
+  const autoSaveTimer = useRef(null);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (user === null) navigate('/login');
+  }, [user]);
+
+  // Load existing pamphlet
+  useEffect(() => {
+    if (!pamId || !user) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from('pamphlets')
+        .select('*')
+        .eq('id', pamId)
+        .eq('user_id', user.id)
+        .single();
+      if (error || !data) { navigate('/recruit'); return; }
+      setForm({ ...DEFAULT, ...(data.form_data || {}) });
+      setIsDraft(data.is_draft);
+      setSavedId(data.id);
+      // Load cover image
+      if (data.cover_url) {
+        setCoverSrc(data.cover_url);
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => setCoverImg(img);
+        img.src = data.cover_url;
+      }
+      setLoaded(true);
+    })();
+  }, [pamId, user]);
 
   const set = (key, val) => setForm((prev) => ({ ...prev, [key]: val }));
   const hasContent = Object.values(form).some((v) => v.trim());
@@ -176,9 +203,85 @@ export default function Recruit() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
+  // Auto-save draft (debounced 2s after last edit)
+  useEffect(() => {
+    if (!loaded || !user || !hasContent) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      savePamphlet(true);
+    }, 2000);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [form, loaded, user]);
+
+  /* ── Save ── */
+  const uploadCover = async (id) => {
+    if (!coverFile) return coverSrc; // keep existing URL or null
+    const path = `${user.id}/${id}`;
+    // Remove old if exists
+    await supabase.storage.from('pamphlet-covers').remove([path]);
+    const { error } = await supabase.storage.from('pamphlet-covers').upload(path, coverFile, { upsert: true });
+    if (error) { console.error('cover upload error', error); return coverSrc; }
+    const { data } = supabase.storage.from('pamphlet-covers').getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const savePamphlet = async (asDraft = true) => {
+    if (saving || !user) return;
+    setSaving(true);
+    try {
+      let id = savedId;
+      let coverUrl = coverSrc;
+
+      if (!id) {
+        // Create new
+        const { data, error } = await supabase
+          .from('pamphlets')
+          .insert({ user_id: user.id, form_data: form, is_draft: asDraft })
+          .select('id')
+          .single();
+        if (error) throw error;
+        id = data.id;
+        setSavedId(id);
+      }
+
+      // Upload cover if new file
+      if (coverFile) {
+        coverUrl = await uploadCover(id);
+        setCoverFile(null);
+        setCoverSrc(coverUrl);
+      }
+
+      // Update
+      const { error } = await supabase
+        .from('pamphlets')
+        .update({
+          form_data: form,
+          cover_url: coverUrl || null,
+          is_draft: asDraft,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (error) throw error;
+      setIsDraft(asDraft);
+
+      if (!asDraft) showToast('저장 완료');
+      // Update URL if new pamphlet
+      if (!pamId && id) {
+        window.history.replaceState(null, '', `/recruit/${id}`);
+      }
+    } catch (err) {
+      console.error('save error', err);
+      if (!asDraft) showToast('저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ── Cover ── */
   const handleCoverUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setCoverFile(file);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const url = ev.target.result;
@@ -191,8 +294,13 @@ export default function Recruit() {
     e.target.value = '';
   };
 
-  const removeCover = () => { setCoverSrc(null); setCoverImg(null); };
+  const removeCover = () => {
+    setCoverSrc(null);
+    setCoverImg(null);
+    setCoverFile(null);
+  };
 
+  /* ── Export ── */
   const handleCopyText = () => {
     const text = buildText(form);
     navigator.clipboard.writeText(text).then(() => showToast('텍스트 복사됨'));
@@ -217,14 +325,20 @@ export default function Recruit() {
 
   const filled = FIELD_META.filter(({ key }) => form[key]?.trim()).length;
 
+  if (user === undefined || (!loaded && pamId)) {
+    return <div className="login-page"><div style={{ color: 'var(--text-dim)' }}>불러오는 중...</div></div>;
+  }
+
   return (
     <div className="recruit-page">
       <header className="post-header">
-        <Link to="/" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', padding: '8px', marginLeft: '-8px' }} aria-label="홈으로">
+        <Link to="/my-pamphlets" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', padding: '8px', marginLeft: '-8px' }} aria-label="내 팜플렛">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
         </Link>
         <div className="post-title">모집 팜플렛</div>
-        <div style={{ width: 36 }} />
+        <div className="recruit-save-status">
+          {saving ? '저장 중...' : savedId ? (isDraft ? '임시저장됨' : '저장됨') : ''}
+        </div>
       </header>
 
       <div className="recruit-form">
@@ -271,7 +385,12 @@ export default function Recruit() {
 
       <div className="recruit-actions">
         <div className="recruit-filled">{filled}/{FIELD_META.length} 입력됨</div>
-        <button className="btn-primary recruit-preview-btn" onClick={handlePreview} disabled={!hasContent}>미리보기</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="recruit-save-btn" onClick={() => savePamphlet(false)} disabled={!hasContent || saving}>
+            저장
+          </button>
+          <button className="btn-primary recruit-preview-btn" onClick={handlePreview} disabled={!hasContent}>미리보기</button>
+        </div>
       </div>
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />

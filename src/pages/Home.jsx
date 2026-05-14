@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase, generateId } from '../supabase';
 import { hashPassword } from '../crypto';
+import { useAuth } from '../auth';
 
 export default function Home() {
   const [title, setTitle] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,6 +31,18 @@ export default function Home() {
 
   return (
     <div className="home">
+      {/* Auth bar */}
+      <div className="home-auth-bar">
+        {user ? (
+          <>
+            <span className="home-auth-email">{user.email}</span>
+            <button className="home-auth-btn" onClick={signOut}>로그아웃</button>
+          </>
+        ) : (
+          <Link to="/login" className="home-auth-btn">로그인</Link>
+        )}
+      </div>
+
       <div className="home-logo">PicPic</div>
       <div className="home-sub">인스타 이미지 셀렉 · 실시간 공유</div>
       <form className="home-form" onSubmit={handleSubmit}>
@@ -53,7 +67,10 @@ export default function Home() {
         </button>
       </form>
       <Link to="/admin" className="home-admin-link">게시물 관리</Link>
-      <Link to="/recruit" className="home-recruit-link">모집 팜플렛</Link>
+      <div className="home-links-row">
+        <Link to={user ? '/my-pamphlets' : '/login'} className="home-recruit-link">내 팜플렛</Link>
+        <Link to={user ? '/recruit' : '/login'} className="home-recruit-link">새 팜플렛</Link>
+      </div>
       <footer className="home-footer">
         <a href="https://instagram.com/walk.and.look" target="_blank" rel="noopener noreferrer" className="home-insta">@walk.and.look</a>
         <span className="home-copyright">Made by walk.and.look · © 2026</span>
