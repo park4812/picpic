@@ -636,14 +636,15 @@ export default function Post() {
                   poolLongPress.current.timer = setTimeout(() => {
                     poolLongPress.current.triggered = true;
                     setViewer({ mode: 'view', index: imgIdx, imageIds: images.map((i) => i.id) });
-                  }, 400);
+                  }, 700);
                 }}
                 onPointerUp={() => clearTimeout(poolLongPress.current.timer)}
                 onPointerLeave={() => clearTimeout(poolLongPress.current.timer)}
+                onPointerCancel={() => clearTimeout(poolLongPress.current.timer)}
                 draggable={!selectedImageIds.has(img.id)}
                 onDragStart={(e) => handlePoolDragStart(e, img.id)}
               >
-                <img src={storageUrl(img.storage_path)} alt="" loading="lazy" />
+                <img src={storageUrl(img.storage_path)} alt="" loading="lazy" draggable={false} style={{ pointerEvents: 'none' }} />
                 {isOwner && <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>}
               </div>
             ))}
