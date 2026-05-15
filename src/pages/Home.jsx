@@ -74,7 +74,7 @@ export default function Home() {
           placeholder="게시물 제목 (예: 5월 제주 여행)"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          autoFocus
+          autoFocus={window.matchMedia('(hover: hover)').matches}
         />
         {!user && (
           <input

@@ -28,6 +28,7 @@ export default function Post() {
   const [justSelected, setJustSelected] = useState(null);
   const [selectionLocked, setSelectionLocked] = useState(false);
   const [myPicks, setMyPicks] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
   const viewerTouchRef = useRef({ startX: 0, startY: 0 });
@@ -248,16 +249,20 @@ export default function Post() {
     await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
   };
 
-  const handleDelete = async (e, imageId) => {
+  const handleDelete = (e, imageId) => {
     e.stopPropagation();
-    if (!confirm('이 이미지를 삭제할까요?')) return;
-    const img = getImageById(imageId);
-    if (!img) return;
-    setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
-    setImages((prev) => prev.filter((i) => i.id !== imageId));
-    await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
-    await supabase.storage.from('post-images').remove([img.storage_path]);
-    await supabase.from('images').delete().eq('id', imageId);
+    setConfirmDialog({
+      message: '이 이미지를 삭제할까요?',
+      onConfirm: async () => {
+        const img = getImageById(imageId);
+        if (!img) return;
+        setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
+        setImages((prev) => prev.filter((i) => i.id !== imageId));
+        await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
+        await supabase.storage.from('post-images').remove([img.storage_path]);
+        await supabase.from('images').delete().eq('id', imageId);
+      },
+    });
   };
 
   // --- Snapshots ---
@@ -274,22 +279,32 @@ export default function Post() {
     showToast(`"${name}" 저장됨`);
   };
 
-  const handleLoadSnapshot = async (snapshot) => {
-    if (selections.length > 0 && !confirm(`현재 셀렉을 "${snapshot.name}" 스냅샷으로 교체할까요?`)) return;
-    await supabase.from('selections').delete().eq('post_id', postId);
-    const rows = snapshot.image_ids.map((imageId, i) => ({
-      post_id: postId, image_id: imageId, position: i,
-    }));
-    if (rows.length) await supabase.from('selections').insert(rows);
-    setSelections(rows);
-    setViewer(null);
-    showToast(`"${snapshot.name}" 불러옴`);
+  const handleLoadSnapshot = (snapshot) => {
+    const doLoad = async () => {
+      await supabase.from('selections').delete().eq('post_id', postId);
+      const rows = snapshot.image_ids.map((imageId, i) => ({
+        post_id: postId, image_id: imageId, position: i,
+      }));
+      if (rows.length) await supabase.from('selections').insert(rows);
+      setSelections(rows);
+      setViewer(null);
+      showToast(`"${snapshot.name}" 불러옴`);
+    };
+    if (selections.length > 0) {
+      setConfirmDialog({ message: `현재 셀렉을 "${snapshot.name}"(으)로 교체할까요?`, onConfirm: doLoad });
+    } else {
+      doLoad();
+    }
   };
 
-  const handleDeleteSnapshot = async (snapshot) => {
-    if (!confirm(`"${snapshot.name}" 스냅샷을 삭제할까요?`)) return;
-    setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
-    await supabase.from('snapshots').delete().eq('id', snapshot.id);
+  const handleDeleteSnapshot = (snapshot) => {
+    setConfirmDialog({
+      message: `"${snapshot.name}" 스냅샷을 삭제할까요?`,
+      onConfirm: async () => {
+        setSnapshots((prev) => prev.filter((s) => s.id !== snapshot.id));
+        await supabase.from('snapshots').delete().eq('id', snapshot.id);
+      },
+    });
   };
 
   // --- Selection Lock ---
@@ -442,7 +457,8 @@ export default function Post() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        if (viewer) setViewer(null);
+        if (confirmDialog) setConfirmDialog(null);
+        else if (viewer) setViewer(null);
         else if (showSnapshotSave) setShowSnapshotSave(false);
         else if (showPasswordModal) setShowPasswordModal(false);
       }
@@ -735,6 +751,18 @@ export default function Post() {
         </div>
       )}
 
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{confirmDialog.message}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-secondary" onClick={() => setConfirmDialog(null)}>취소</button>
+              <button className="btn-primary" onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {viewer && (() => {
         const total = viewer.mode === 'compare'
           ? Math.max(viewer.imageIds.length, viewer.compareImageIds.length)
@@ -767,11 +795,11 @@ export default function Post() {
               </button>
             </div>
 
-            <div className="viewer-body">
+            <div className="viewer-body" onClick={() => setViewer(null)}>
               {viewer.mode === 'view' ? (() => {
                 const img = getImageById(viewer.imageIds[viewer.index]);
                 return img
-                  ? <img src={storageUrl(img.storage_path)} alt="" />
+                  ? <img src={storageUrl(img.storage_path)} alt="" onClick={(e) => e.stopPropagation()} />
                   : <div className="viewer-empty">이미지를 찾을 수 없습니다</div>;
               })() : (
                 <div className="viewer-compare">

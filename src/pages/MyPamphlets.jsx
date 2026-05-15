@@ -9,6 +9,7 @@ export default function MyPamphlets() {
   const [pamphlets, setPamphlets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     if (user === null) { navigate('/login?redirect=/my-pamphlets', { replace: true }); return; }
@@ -26,15 +27,18 @@ export default function MyPamphlets() {
     setLoading(false);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = (id) => {
     if (deleting) return;
-    if (!confirm('이 팜플렛을 삭제할까요?')) return;
-    setDeleting(id);
-    // Delete cover image from storage
-    await supabase.storage.from('pamphlet-covers').remove([`${user.id}/${id}`]);
-    const { error } = await supabase.from('pamphlets').delete().eq('id', id);
-    if (!error) setPamphlets((prev) => prev.filter((p) => p.id !== id));
-    setDeleting(null);
+    setConfirmDialog({
+      message: '이 팜플렛을 삭제할까요?',
+      onConfirm: async () => {
+        setDeleting(id);
+        await supabase.storage.from('pamphlet-covers').remove([`${user.id}/${id}`]);
+        const { error } = await supabase.from('pamphlets').delete().eq('id', id);
+        if (!error) setPamphlets((prev) => prev.filter((p) => p.id !== id));
+        setDeleting(null);
+      },
+    });
   };
 
   if (user === undefined || loading) {
@@ -93,6 +97,17 @@ export default function MyPamphlets() {
               </div>
             );
           })}
+        </div>
+      )}
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{confirmDialog.message}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-secondary" onClick={() => setConfirmDialog(null)}>취소</button>
+              <button className="btn-primary" onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}>확인</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
