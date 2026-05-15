@@ -35,7 +35,7 @@ function buildText(form) {
   return lines.join('\n');
 }
 
-function drawCard(canvas, form, coverImg) {
+function drawCard(canvas, form, coverImg, showWatermark = true) {
   const W = 1080, H = 1920;
   canvas.width = W;
   canvas.height = H;
@@ -137,10 +137,12 @@ function drawCard(canvas, form, coverImg) {
   ctx.fillStyle = accentGrad;
   ctx.fillRect(0, H - 6, W, 6);
 
-  ctx.fillStyle = '#444';
-  ctx.font = '400 28px -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('PicPic', W / 2, H - 40);
+  if (showWatermark) {
+    ctx.fillStyle = '#444';
+    ctx.font = '400 28px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PicPic', W / 2, H - 40);
+  }
 }
 
 /* ─── Component ─── */
@@ -159,6 +161,7 @@ export default function Recruit() {
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(pamId || null);
   const [isDraft, setIsDraft] = useState(true);
+  const [showWatermark, setShowWatermark] = useState(true);
   const [loaded, setLoaded] = useState(!pamId); // true if new
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
@@ -308,7 +311,7 @@ export default function Recruit() {
 
   const handleDownloadImage = () => {
     const canvas = canvasRef.current;
-    drawCard(canvas, form, coverImg);
+    drawCard(canvas, form, coverImg, showWatermark);
     const link = document.createElement('a');
     link.download = '모집_팜플렛.png';
     link.href = canvas.toDataURL('image/png');
@@ -319,7 +322,7 @@ export default function Recruit() {
   const handlePreview = () => {
     if (!hasContent) return;
     const canvas = canvasRef.current;
-    drawCard(canvas, form, coverImg);
+    drawCard(canvas, form, coverImg, showWatermark);
     setPreviewUrl(canvas.toDataURL('image/png'));
   };
 
@@ -384,7 +387,13 @@ export default function Recruit() {
       </div>
 
       <div className="recruit-actions">
-        <div className="recruit-filled">{filled}/{FIELD_META.length} 입력됨</div>
+        <div className="recruit-actions-top">
+          <div className="recruit-filled">{filled}/{FIELD_META.length} 입력됨</div>
+          <label className="recruit-watermark-check">
+            <input type="checkbox" checked={showWatermark} onChange={(e) => setShowWatermark(e.target.checked)} />
+            <span>PicPic 워터마크</span>
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="recruit-save-btn" onClick={() => savePamphlet(false)} disabled={!hasContent || saving}>
             저장

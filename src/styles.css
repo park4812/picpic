@@ -1232,8 +1232,8 @@ body {
 
 .recruit-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
   padding: 16px;
   position: sticky;
   bottom: 0;
@@ -1241,10 +1241,38 @@ body {
   padding-top: 32px;
 }
 
+.recruit-actions-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .recruit-filled {
   font-size: 13px;
   color: var(--text-dim);
   font-weight: 500;
+}
+
+.recruit-watermark-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.recruit-watermark-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.recruit-actions > div:last-child {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .recruit-preview-btn {
