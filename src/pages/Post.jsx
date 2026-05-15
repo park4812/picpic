@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase, generateId, storageUrl } from '../supabase';
 import { hashPassword } from '../crypto';
 import { useAuth } from '../auth';
+import QRCode from 'qrcode';
 
 export default function Post() {
   const { postId } = useParams();
@@ -28,7 +29,10 @@ export default function Post() {
   const [justSelected, setJustSelected] = useState(null);
   const [selectionLocked, setSelectionLocked] = useState(false);
   const [myPicks, setMyPicks] = useState([]);
-  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [sortMode, setSortMode] = useState('date'); // 'date' | 'name'
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'selected' | 'unselected'
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
   const viewerTouchRef = useRef({ startX: 0, startY: 0 });
@@ -183,6 +187,22 @@ export default function Post() {
   const getImageById = (id) => images.find((img) => img.id === id);
   const canEditSelection = !selectionLocked || isOwner;
   const myPickSet = new Set(myPicks);
+
+  // Selection order lookup: imageId → position (1-based)
+  const selectionOrder = useMemo(() => {
+    const map = new Map();
+    selections.forEach((s, i) => map.set(s.image_id, i + 1));
+    return map;
+  }, [selections]);
+
+  // Filtered & sorted images for pool display
+  const displayImages = useMemo(() => {
+    let filtered = images;
+    if (filterMode === 'selected') filtered = images.filter((img) => selectedImageIds.has(img.id));
+    else if (filterMode === 'unselected') filtered = images.filter((img) => !selectedImageIds.has(img.id));
+    if (sortMode === 'name') return [...filtered].sort((a, b) => (a.original_name || '').localeCompare(b.original_name || ''));
+    return filtered; // 'date' = default order (created_at)
+  }, [images, filterMode, sortMode, selectedImageIds]);
 
   const resizeImage = (file, maxSize = 960) => new Promise((resolve) => {
     const img = new Image();
@@ -365,6 +385,25 @@ export default function Post() {
     }
   };
 
+  const handleShowQR = async () => {
+    const url = window.location.href;
+    const dataUrl = await QRCode.toDataURL(url, {
+      width: 280, margin: 2, color: { dark: '#ffffff', light: '#111111' },
+    });
+    setQrDataUrl(dataUrl);
+  };
+
+  const handleClearSelections = async () => {
+    setConfirmDialog({
+      message: `셀렉 ${selections.length}장을 전부 해제할까요?`,
+      onConfirm: async () => {
+        setSelections([]);
+        await supabase.from('selections').delete().eq('post_id', postId);
+        showToast('전체 해제됨');
+      },
+    });
+  };
+
   // --- Reorder: move source to target's position, shift others ---
   const doReorder = async (sourceImageId, targetImageId) => {
     const ordered = [...selections];
@@ -513,6 +552,9 @@ export default function Post() {
             ? () => { setIsOwner(false); sessionStorage.removeItem(`picpic_auth_${postId}`); showToast('관리자 해제'); }
             : () => setShowPasswordModal(true)
           }>{isOwner ? '관리자' : '인증'}</button>
+          <button className="share-btn" onClick={handleShowQR} aria-label="QR코드">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="21" y1="14" x2="21" y2="17"/><line x1="14" y1="21" x2="17" y2="21"/></svg>
+          </button>
           <button className="share-btn" onClick={handleShare} aria-label="공유">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
           </button>
@@ -631,39 +673,65 @@ export default function Post() {
 
       <div className="section-label">
         전체 이미지 {images.length > 0 && <span className="section-count">{images.length}</span>}
+        {canEditSelection && selections.length > 0 && (
+          <button className="viewer-open-btn danger-text" onClick={handleClearSelections}>전체 해제</button>
+        )}
       </div>
+      {images.length > 3 && (
+        <div className="pool-toolbar">
+          <div className="pool-filters">
+            {['all', 'selected', 'unselected'].map((f) => (
+              <button key={f} className={`pool-filter-btn${filterMode === f ? ' active' : ''}`} onClick={() => setFilterMode(f)}>
+                {f === 'all' ? '전체' : f === 'selected' ? '셀렉됨' : '미셀렉'}
+              </button>
+            ))}
+          </div>
+          <button className="pool-sort-btn" onClick={() => setSortMode((s) => s === 'date' ? 'name' : 'date')}>
+            {sortMode === 'date' ? '업로드순' : '이름순'}
+          </button>
+        </div>
+      )}
       <div className="pool-area">
         {images.length === 0 ? (
           <div className="selection-empty" style={{ minHeight: '200px' }}>
             {isOwner ? '아래 버튼으로 이미지를 업로드하세요' : '아직 업로드된 이미지가 없습니다'}
           </div>
+        ) : displayImages.length === 0 ? (
+          <div className="selection-empty" style={{ minHeight: '100px' }}>
+            {filterMode === 'selected' ? '셀렉된 이미지가 없습니다' : '미셀렉 이미지가 없습니다'}
+          </div>
         ) : (
           <div className="pool-grid">
-            {images.map((img, imgIdx) => (
-              <div
-                key={img.id}
-                className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}`}
-                onClick={() => {
-                  if (poolLongPress.current.triggered) { poolLongPress.current.triggered = false; return; }
-                  (selectionLocked && !isOwner) ? handleMyPick(img.id) : handleSelect(img.id);
-                }}
-                onPointerDown={() => {
-                  poolLongPress.current.triggered = false;
-                  poolLongPress.current.timer = setTimeout(() => {
-                    poolLongPress.current.triggered = true;
-                    setViewer({ mode: 'view', index: imgIdx, imageIds: images.map((i) => i.id) });
-                  }, 700);
-                }}
-                onPointerUp={() => clearTimeout(poolLongPress.current.timer)}
-                onPointerLeave={() => clearTimeout(poolLongPress.current.timer)}
-                onPointerCancel={() => clearTimeout(poolLongPress.current.timer)}
-                draggable={!selectedImageIds.has(img.id)}
-                onDragStart={(e) => handlePoolDragStart(e, img.id)}
-              >
-                <img src={storageUrl(img.storage_path)} alt="" loading="lazy" draggable={false} style={{ pointerEvents: 'none' }} />
-                {isOwner && <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>}
-              </div>
-            ))}
+            {displayImages.map((img) => {
+              const poolIdx = images.indexOf(img);
+              const selOrder = selectionOrder.get(img.id);
+              return (
+                <div
+                  key={img.id}
+                  className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}`}
+                  onClick={() => {
+                    if (poolLongPress.current.triggered) { poolLongPress.current.triggered = false; return; }
+                    (selectionLocked && !isOwner) ? handleMyPick(img.id) : handleSelect(img.id);
+                  }}
+                  onPointerDown={() => {
+                    poolLongPress.current.triggered = false;
+                    poolLongPress.current.timer = setTimeout(() => {
+                      poolLongPress.current.triggered = true;
+                      setViewer({ mode: 'view', index: poolIdx, imageIds: images.map((i) => i.id) });
+                    }, 700);
+                  }}
+                  onPointerUp={() => clearTimeout(poolLongPress.current.timer)}
+                  onPointerLeave={() => clearTimeout(poolLongPress.current.timer)}
+                  onPointerCancel={() => clearTimeout(poolLongPress.current.timer)}
+                  draggable={!selectedImageIds.has(img.id)}
+                  onDragStart={(e) => handlePoolDragStart(e, img.id)}
+                >
+                  <img src={storageUrl(img.storage_path)} alt="" loading="lazy" draggable={false} style={{ pointerEvents: 'none' }} />
+                  {selOrder && <span className="pool-select-badge">{selOrder}</span>}
+                  {isOwner && <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -748,6 +816,20 @@ export default function Post() {
               <button type="submit" className="btn-primary">저장</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {qrDataUrl && (
+        <div className="modal-overlay" onClick={() => setQrDataUrl(null)}>
+          <div className="modal qr-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title" style={{ textAlign: 'center' }}>{post.title}</div>
+            <img src={qrDataUrl} alt="QR Code" className="qr-image" />
+            <div className="qr-url">{window.location.href}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-secondary" onClick={() => setQrDataUrl(null)}>닫기</button>
+              <button className="btn-primary" onClick={() => { navigator.clipboard.writeText(window.location.href); showToast('링크 복사됨'); }}>링크 복사</button>
+            </div>
+          </div>
         </div>
       )}
 
