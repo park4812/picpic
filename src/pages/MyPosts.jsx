@@ -21,6 +21,8 @@ export default function MyPosts() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     if (user === null) { navigate('/login?redirect=/my-posts'); return; }
@@ -51,6 +53,25 @@ export default function MyPosts() {
     setLoading(false);
   };
 
+  const handleDelete = (post) => {
+    if (deleting) return;
+    setConfirmDialog({
+      message: `"${post.title}" 게시물을 삭제할까요?\n사진과 셀렉이 모두 삭제됩니다.`,
+      onConfirm: async () => {
+        setDeleting(post.id);
+        // Delete storage images
+        const { data: imgs } = await supabase.from('images').select('storage_path').eq('post_id', post.id);
+        if (imgs?.length) {
+          await supabase.storage.from('post-images').remove(imgs.map((i) => i.storage_path));
+        }
+        // Delete post (cascade handles images, selections, snapshots)
+        const { error } = await supabase.from('posts').delete().eq('id', post.id);
+        if (!error) setPosts((prev) => prev.filter((p) => p.id !== post.id));
+        setDeleting(null);
+      },
+    });
+  };
+
   if (user === undefined || loading) {
     return <div className="loading"><div className="spinner" />불러오는 중...</div>;
   }
@@ -74,8 +95,8 @@ export default function MyPosts() {
           </div>
         ) : (
           posts.map((post) => (
-            <Link key={post.id} to={`/p/${post.id}`} className="admin-item" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="admin-item-info">
+            <div key={post.id} className="admin-item">
+              <Link to={`/p/${post.id}`} className="admin-item-info" style={{ textDecoration: 'none', color: 'inherit' }}>
                 <div className="admin-item-title">{post.title}</div>
                 <div className="admin-item-counts">
                   사진 {post.imageCount}장 · 셀렉 {post.selectionCount}장
@@ -84,12 +105,32 @@ export default function MyPosts() {
                   <span>생성 {relativeDate(post.created_at)}</span>
                   <span>접속 {relativeDate(post.last_accessed_at)}</span>
                 </div>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 6 15 12 9 18" /></svg>
-            </Link>
+              </Link>
+              <button
+                className="pam-item-delete"
+                onClick={() => handleDelete(post)}
+                disabled={deleting === post.id}
+                aria-label="삭제"
+              >
+                {deleting === post.id ? '...' : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                )}
+              </button>
+            </div>
           ))
         )}
       </div>
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{confirmDialog.message}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-secondary" onClick={() => setConfirmDialog(null)}>취소</button>
+              <button className="btn-primary" style={{ background: 'var(--danger)' }} onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}>삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

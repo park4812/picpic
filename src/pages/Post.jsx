@@ -31,12 +31,20 @@ export default function Post() {
   const [myPicks, setMyPicks] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
-  const [sortMode, setSortMode] = useState('date'); // 'date' | 'name'
-  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'selected' | 'unselected'
+  const [sortMode, setSortMode] = useState('date');
+  const [filterMode, setFilterMode] = useState('all');
+  const [reactions, setReactions] = useState({}); // { imageId: { emoji: count } }
+  const [myReactions, setMyReactions] = useState({}); // { imageId: emoji }
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [showOnlinePanel, setShowOnlinePanel] = useState(false);
+  const [selectionLog, setSelectionLog] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const fileInputRef = useRef(null);
   const toastTimer = useRef(null);
   const viewerTouchRef = useRef({ startX: 0, startY: 0 });
   const poolLongPress = useRef({ timer: null, triggered: false });
+  const myPresenceKey = useRef(generateId(6));
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -76,12 +84,19 @@ export default function Post() {
           }
         }
       }
+      // Check expiration
+      if (postData.expires_at && new Date(postData.expires_at) < new Date()) {
+        setNotFound(true); setLoading(false); return;
+      }
       // Update last accessed timestamp (fire and forget)
       supabase.from('posts').update({ last_accessed_at: new Date().toISOString() }).eq('id', postId).then();
-      const [imgRes, selRes, snapRes] = await Promise.all([
+      const safe = (q) => Promise.resolve(q).then((r) => r, () => ({ data: [] }));
+      const [imgRes, selRes, snapRes, reactRes, logRes] = await Promise.all([
         supabase.from('images').select('*').eq('post_id', postId).order('created_at'),
         supabase.from('selections').select('*').eq('post_id', postId).order('position'),
         supabase.from('snapshots').select('*').eq('post_id', postId).order('created_at'),
+        safe(supabase.from('reactions').select('*').eq('post_id', postId)),
+        safe(supabase.from('selection_log').select('*').eq('post_id', postId).order('created_at', { ascending: false }).limit(50)),
       ]);
       if (cancelled) return;
       if (imgRes.error) console.error('images load error:', imgRes.error);
@@ -89,6 +104,17 @@ export default function Post() {
       if (snapRes.error) console.error('snapshots load error:', snapRes.error);
       setImages(imgRes.data || []);
       setSelections(selRes.data || []);
+      // Build reaction map
+      const rMap = {};
+      (reactRes.data || []).forEach((r) => {
+        if (!rMap[r.image_id]) rMap[r.image_id] = {};
+        rMap[r.image_id][r.emoji] = (rMap[r.image_id][r.emoji] || 0) + 1;
+      });
+      setReactions(rMap);
+      // Restore my reactions from session
+      const savedReactions = sessionStorage.getItem(`picpic_reactions_${postId}`);
+      if (savedReactions) try { setMyReactions(JSON.parse(savedReactions)); } catch {}
+      setSelectionLog(logRes.data || []);
       setSnapshots(snapRes.data || []);
       setLoading(false);
       const savedPicks = sessionStorage.getItem(`picpic_mypicks_${postId}`);
@@ -145,16 +171,22 @@ export default function Post() {
     }
   };
 
+  const isUploadingRef = useRef(false);
+
   useEffect(() => {
     const channel = supabase.channel(`post-${postId}`, {
-      config: { presence: { key: generateId(6) } },
+      config: { presence: { key: myPresenceKey.current } },
     });
 
     channel
       .on('postgres_changes', { event: '*', schema: 'public', table: 'images', filter: `post_id=eq.${postId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setImages((prev) => prev.some((img) => img.id === payload.new.id) ? prev : [...prev, payload.new]);
+            setImages((prev) => {
+              if (prev.some((img) => img.id === payload.new.id)) return prev;
+              if (!isUploadingRef.current) showToast('새 이미지가 추가됨');
+              return [...prev, payload.new];
+            });
           } else if (payload.eventType === 'DELETE') {
             setImages((prev) => prev.filter((img) => img.id !== payload.old.id));
             setSelections((prev) => prev.filter((s) => s.image_id !== payload.old.id));
@@ -173,15 +205,42 @@ export default function Post() {
             .then(({ data }) => { if (data) setSnapshots(data); });
         }
       )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions', filter: `post_id=eq.${postId}` },
+        () => {
+          Promise.resolve(supabase.from('reactions').select('*').eq('post_id', postId))
+            .then(({ data }) => {
+              if (!data) return;
+              const rMap = {};
+              data.forEach((r) => {
+                if (!rMap[r.image_id]) rMap[r.image_id] = {};
+                rMap[r.image_id][r.emoji] = (rMap[r.image_id][r.emoji] || 0) + 1;
+              });
+              setReactions(rMap);
+            }).catch(() => {});
+        }
+      )
       .on('presence', { event: 'sync' }, () => {
-        setOnlineCount(Object.keys(channel.presenceState()).length);
+        const state = channel.presenceState();
+        const users = [];
+        Object.entries(state).forEach(([key, presences]) => {
+          presences.forEach((p) => {
+            users.push({ key, name: p.name || `익명-${key.slice(0, 4)}`, joinedAt: p.joined_at });
+          });
+        });
+        setOnlineUsers(users);
+        setOnlineCount(users.length);
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') await channel.track({ joined_at: Date.now() });
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            joined_at: Date.now(),
+            name: user?.email?.split('@')[0] || `익명-${myPresenceKey.current.slice(0, 4)}`,
+          });
+        }
       });
 
     return () => { supabase.removeChannel(channel); };
-  }, [postId]);
+  }, [postId, user]);
 
   const selectedImageIds = new Set(selections.map((s) => s.image_id));
   const getImageById = (id) => images.find((img) => img.id === id);
@@ -204,20 +263,28 @@ export default function Post() {
     return filtered; // 'date' = default order (created_at)
   }, [images, filterMode, sortMode, selectedImageIds]);
 
-  const resizeImage = (file, maxSize = 960) => new Promise((resolve) => {
+  const resizeImage = (file, maxSize = 960, addWatermark = false) => new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
-      if (width <= maxSize && height <= maxSize) {
-        resolve(file);
-        return;
-      }
+      const needsResize = width > maxSize || height > maxSize;
+      if (!needsResize && !addWatermark) { resolve(file); return; }
       if (width > height) { height = Math.round(height * (maxSize / width)); width = maxSize; }
-      else { width = Math.round(width * (maxSize / height)); height = maxSize; }
+      else if (height > width) { width = Math.round(width * (maxSize / height)); height = maxSize; }
+      else if (width > maxSize) { width = maxSize; height = maxSize; }
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      if (addWatermark) {
+        const fontSize = Math.max(12, Math.round(width * 0.03));
+        ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('PicPic', width - 8, height - 6);
+      }
       canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
     };
     img.src = URL.createObjectURL(file);
@@ -227,11 +294,12 @@ export default function Post() {
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setUploading(true);
+    isUploadingRef.current = true;
     try {
       const rows = [];
       for (let i = 0; i < files.length; i++) {
         setUploadProgress(`${i + 1}/${files.length}장`);
-        const resized = await resizeImage(files[i]);
+        const resized = await resizeImage(files[i], 960, watermarkEnabled);
         const path = `${postId}/${generateId()}.jpg`;
         const { error: err } = await supabase.storage.from('post-images').upload(path, resized, { contentType: 'image/jpeg' });
         if (err) throw err;
@@ -245,8 +313,15 @@ export default function Post() {
       showToast('업로드 실패');
     }
     setUploading(false);
+    isUploadingRef.current = false;
     setUploadProgress('');
     e.target.value = '';
+  };
+
+  const logSelection = (imageId, action) => {
+    const actor = user?.email?.split('@')[0] || `익명-${myPresenceKey.current.slice(0, 4)}`;
+    Promise.resolve(supabase.from('selection_log').insert({ post_id: postId, image_id: imageId, action, actor })).catch(() => {});
+    setSelectionLog((prev) => [{ post_id: postId, image_id: imageId, action, actor, created_at: new Date().toISOString() }, ...prev].slice(0, 50));
   };
 
   const handleSelect = async (imageId) => {
@@ -254,6 +329,7 @@ export default function Post() {
       setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
       const { error } = await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
       if (error) { console.error('deselect error:', error); showToast('셀렉 해제 실패: ' + error.message); }
+      else logSelection(imageId, 'deselect');
     } else {
       const maxPos = selections.length > 0 ? Math.max(...selections.map((s) => s.position)) + 1 : 0;
       setSelections((prev) => [...prev, { post_id: postId, image_id: imageId, position: maxPos }]);
@@ -261,12 +337,14 @@ export default function Post() {
       setTimeout(() => setJustSelected(null), 300);
       const { error } = await supabase.from('selections').insert({ post_id: postId, image_id: imageId, position: maxPos });
       if (error) { console.error('select error:', error); showToast('셀렉 실패: ' + error.message); }
+      else logSelection(imageId, 'select');
     }
   };
 
   const handleDeselect = async (imageId) => {
     setSelections((prev) => prev.filter((s) => s.image_id !== imageId));
     await supabase.from('selections').delete().eq('post_id', postId).eq('image_id', imageId);
+    logSelection(imageId, 'deselect');
   };
 
   const handleDelete = (e, imageId) => {
@@ -404,6 +482,51 @@ export default function Post() {
     });
   };
 
+  const REACTION_EMOJIS = ['❤️', '🔥', '👍', '😍', '🤔'];
+
+  const handleReact = async (imageId, emoji) => {
+    const prevEmoji = myReactions[imageId];
+    if (prevEmoji === emoji) {
+      // Remove reaction
+      const next = { ...myReactions };
+      delete next[imageId];
+      setMyReactions(next);
+      sessionStorage.setItem(`picpic_reactions_${postId}`, JSON.stringify(next));
+      setReactions((prev) => {
+        const updated = { ...prev };
+        if (updated[imageId]?.[emoji]) {
+          updated[imageId] = { ...updated[imageId] };
+          updated[imageId][emoji]--;
+          if (updated[imageId][emoji] <= 0) delete updated[imageId][emoji];
+          if (Object.keys(updated[imageId]).length === 0) delete updated[imageId];
+        }
+        return updated;
+      });
+      Promise.resolve(supabase.from('reactions').delete().eq('post_id', postId).eq('image_id', imageId).eq('session_id', myPresenceKey.current)).catch(() => {});
+    } else {
+      // Add / change reaction
+      const next = { ...myReactions, [imageId]: emoji };
+      setMyReactions(next);
+      sessionStorage.setItem(`picpic_reactions_${postId}`, JSON.stringify(next));
+      setReactions((prev) => {
+        const updated = { ...prev };
+        if (prevEmoji && updated[imageId]?.[prevEmoji]) {
+          updated[imageId] = { ...updated[imageId] };
+          updated[imageId][prevEmoji]--;
+          if (updated[imageId][prevEmoji] <= 0) delete updated[imageId][prevEmoji];
+        }
+        if (!updated[imageId]) updated[imageId] = {};
+        else updated[imageId] = { ...updated[imageId] };
+        updated[imageId][emoji] = (updated[imageId][emoji] || 0) + 1;
+        return updated;
+      });
+      if (prevEmoji) {
+        Promise.resolve(supabase.from('reactions').delete().eq('post_id', postId).eq('image_id', imageId).eq('session_id', myPresenceKey.current)).catch(() => {});
+      }
+      Promise.resolve(supabase.from('reactions').insert({ post_id: postId, image_id: imageId, emoji, session_id: myPresenceKey.current })).catch(() => {});
+    }
+  };
+
   // --- Reorder: move source to target's position, shift others ---
   const doReorder = async (sourceImageId, targetImageId) => {
     const ordered = [...selections];
@@ -498,6 +621,8 @@ export default function Post() {
       if (e.key === 'Escape') {
         if (confirmDialog) setConfirmDialog(null);
         else if (viewer) setViewer(null);
+        else if (showHistory) setShowHistory(false);
+        else if (showOnlinePanel) setShowOnlinePanel(false);
         else if (showSnapshotSave) setShowSnapshotSave(false);
         else if (showPasswordModal) setShowPasswordModal(false);
       }
@@ -544,7 +669,7 @@ export default function Post() {
         </Link>
         <div className="post-title">{post.title}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div className="online-badge"><span className="online-dot" />{onlineCount}</div>
+          <button className="online-badge" onClick={() => setShowOnlinePanel(true)}><span className="online-dot" />{onlineCount}</button>
           {canLinkAccount && (
             <button className="share-btn link-btn" onClick={handleLinkAccount}>계정 연결</button>
           )}
@@ -569,6 +694,7 @@ export default function Post() {
             {selectionLocked ? '🔒 잠김' : '🔓 열림'}
           </button>
         )}
+        {selectionLog.length > 0 && <button className="viewer-open-btn" onClick={() => setShowHistory(true)}>기록</button>}
         {selections.length > 0 && <button className="viewer-open-btn" onClick={() => openSelectionViewer()}>보기</button>}
       </div>
       <div className="selection-area" onDragOver={canEditSelection ? handleSelectionAreaDragOver : undefined} onDrop={canEditSelection ? handleSelectionAreaDrop : undefined}>
@@ -728,6 +854,13 @@ export default function Post() {
                 >
                   <img src={storageUrl(img.storage_path)} alt="" loading="lazy" draggable={false} style={{ pointerEvents: 'none' }} />
                   {selOrder && <span className="pool-select-badge">{selOrder}</span>}
+                  {reactions[img.id] && (
+                    <span className="pool-react-badge">
+                      {Object.entries(reactions[img.id]).slice(0, 2).map(([em, cnt]) => (
+                        <span key={em}>{em}{cnt > 1 ? cnt : ''}</span>
+                      ))}
+                    </span>
+                  )}
                   {isOwner && <button className="delete-btn" onClick={(e) => handleDelete(e, img.id)}>✕</button>}
                 </div>
               );
@@ -738,10 +871,16 @@ export default function Post() {
 
       {isOwner && (
         <div className="bottom-bar">
-          <button className={`upload-btn${uploading ? ' uploading' : ''}`} onClick={() => fileInputRef.current?.click()}>
-            {uploading ? `업로드 중... ${uploadProgress}` : '+ 사진 추가'}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
+          <div className="bottom-bar-row">
+            <button className={`upload-btn${uploading ? ' uploading' : ''}`} onClick={() => fileInputRef.current?.click()}>
+              {uploading ? `업로드 중... ${uploadProgress}` : '+ 사진 추가'}
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
+          </div>
+          <label className="watermark-toggle">
+            <input type="checkbox" checked={watermarkEnabled} onChange={(e) => setWatermarkEnabled(e.target.checked)} />
+            <span>워터마크 추가</span>
+          </label>
         </div>
       )}
 
@@ -845,6 +984,53 @@ export default function Post() {
         </div>
       )}
 
+      {showOnlinePanel && (
+        <div className="modal-overlay" onClick={() => setShowOnlinePanel(false)}>
+          <div className="modal online-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">접속 중 ({onlineUsers.length}명)</div>
+            <div className="online-list">
+              {onlineUsers.map((u, i) => (
+                <div key={i} className="online-user-row">
+                  <span className="online-dot" />
+                  <span className="online-user-name">{u.name}</span>
+                  {u.key === myPresenceKey.current && <span className="online-me-badge">나</span>}
+                </div>
+              ))}
+            </div>
+            <button className="btn-secondary" onClick={() => setShowOnlinePanel(false)}>닫기</button>
+          </div>
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="modal-overlay" onClick={() => setShowHistory(false)}>
+          <div className="modal history-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">셀렉 기록</div>
+            {selectionLog.length === 0 ? (
+              <div className="modal-desc">아직 기록이 없습니다</div>
+            ) : (
+              <div className="history-list">
+                {selectionLog.map((log, i) => {
+                  const img = getImageById(log.image_id);
+                  const time = new Date(log.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <div key={i} className="history-row">
+                      {img && <img src={storageUrl(img.storage_path)} alt="" className="history-thumb" />}
+                      <div className="history-info">
+                        <span className="history-actor">{log.actor}</span>
+                        <span className={`history-action ${log.action}`}>{log.action === 'select' ? '셀렉' : '해제'}</span>
+                      </div>
+                      <span className="history-time">{time}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button className="btn-secondary" onClick={() => setShowHistory(false)}>닫기</button>
+          </div>
+        </div>
+      )}
+
       {viewer && (() => {
         const total = viewer.mode === 'compare'
           ? Math.max(viewer.imageIds.length, viewer.compareImageIds.length)
@@ -879,10 +1065,26 @@ export default function Post() {
 
             <div className="viewer-body" onClick={() => setViewer(null)}>
               {viewer.mode === 'view' ? (() => {
-                const img = getImageById(viewer.imageIds[viewer.index]);
-                return img
-                  ? <img src={storageUrl(img.storage_path)} alt="" onClick={(e) => e.stopPropagation()} />
-                  : <div className="viewer-empty">이미지를 찾을 수 없습니다</div>;
+                const imgId = viewer.imageIds[viewer.index];
+                const img = getImageById(imgId);
+                const imgReactions = reactions[imgId] || {};
+                return img ? (
+                  <div className="viewer-img-wrap" onClick={(e) => e.stopPropagation()}>
+                    <img src={storageUrl(img.storage_path)} alt="" />
+                    <div className="viewer-reactions">
+                      {REACTION_EMOJIS.map((em) => (
+                        <button
+                          key={em}
+                          className={`viewer-react-btn${myReactions[imgId] === em ? ' active' : ''}`}
+                          onClick={() => handleReact(imgId, em)}
+                        >
+                          <span>{em}</span>
+                          {imgReactions[em] > 0 && <span className="react-count">{imgReactions[em]}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : <div className="viewer-empty">이미지를 찾을 수 없습니다</div>;
               })() : (
                 <div className="viewer-compare">
                   <div className="viewer-compare-panel">
