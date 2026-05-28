@@ -1427,7 +1427,7 @@ export default function Post() {
               return (
                 <div
                   key={img.id}
-                  className={`pool-thumb${imgLoadState[img.id] ? ' img-loaded' : ''}${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}${compareMode && comparePhotos.includes(img.id) ? ' compare-selected' : ''}`}
+                  className={`pool-thumb${selectedImageIds.has(img.id) ? ' is-selected' : ''}${justSelected === img.id ? ' just-selected' : ''}${myPickSet.has(img.id) ? ' is-my-pick' : ''}${compareMode && comparePhotos.includes(img.id) ? ' compare-selected' : ''}`}
                   onClick={() => {
                     if (poolLongPress.current.triggered) { poolLongPress.current.triggered = false; return; }
                     if (batchMode) { handleBatchToggle(img.id); return; }

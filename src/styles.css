@@ -383,17 +383,14 @@ body {
 
 .pool-thumb {
   position: relative;
-  aspect-ratio: 1/1;
   break-inside: avoid;
   margin-bottom: 4px;
+  min-height: 80px;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.15s;
   background: #0a0a0a;
-}
-.pool-thumb.img-loaded {
-  aspect-ratio: auto;
 }
 
 .pool-thumb:active {
@@ -409,6 +406,7 @@ body {
   user-select: none;
   pointer-events: none;
 }
+
 
 @keyframes selectPulse {
   0% { transform: scale(1); }
