@@ -1,0 +1,9 @@
+torch>=2.3
+diffusers>=0.27
+transformers
+accelerate
+safetensors
+pillow
+fastapi
+uvicorn
+pydantic

@@ -5,6 +5,9 @@ import { supabase, generateId, storageUrl } from '../supabase';
 
 const CANVAS_SIZE = 512;
 const FAL_KEY_STORAGE = 'picpic_fal_key';
+const ENGINE_STORAGE = 'picpic_engine';
+const LOCAL_URL_STORAGE = 'picpic_local_url';
+const DEFAULT_LOCAL_URL = 'http://localhost:5959';
 const MAX_UNDO = 30;
 
 const PRESETS = [
@@ -50,6 +53,8 @@ export default function Sketch() {
   const { boardId } = useParams();
   const navigate = useNavigate();
   const [falKey, setFalKey] = useState(() => localStorage.getItem(FAL_KEY_STORAGE) || '');
+  const [engine, setEngine] = useState(() => localStorage.getItem(ENGINE_STORAGE) || 'fal');
+  const [localUrl, setLocalUrl] = useState(() => localStorage.getItem(LOCAL_URL_STORAGE) || DEFAULT_LOCAL_URL);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   const [presetId, setPresetId] = useState('headshot');
@@ -70,6 +75,8 @@ export default function Sketch() {
 
   const canvasRef = useRef(null);
   const connRef = useRef(null);
+  const localBusyRef = useRef(false);
+  const localPendingRef = useRef(false);
   const drawingRef = useRef(false);
   const lastPosRef = useRef(null);
   const undoStackRef = useRef([]);
@@ -128,9 +135,11 @@ export default function Sketch() {
     };
   }, [boardId]);
 
+  const engineReady = engine === 'local' || !!falKey;
+
   // fal 실시간 연결 (키 변경 시 재연결)
   useEffect(() => {
-    if (!falKey) return;
+    if (engine !== 'fal' || !falKey) return;
     fal.config({ credentials: falKey });
     const conn = fal.realtime.connect('fal-ai/lcm-sd15-i2i', {
       connectionKey: 'picpic-sketch',
@@ -154,14 +163,60 @@ export default function Sketch() {
       try { conn.close(); } catch { /* already closed */ }
       connRef.current = null;
     };
-  }, [falKey]);
+  }, [falKey, engine]);
 
   const buildPrompt = useCallback(() => {
     const preset = PRESETS.find((p) => p.id === presetId);
     return [preset?.prompt, prompt.trim()].filter(Boolean).join(', ');
   }, [presetId, prompt]);
 
+  // 로컬 서버 모드: 진행 중이면 마지막 요청만 예약(latest-wins)
+  const sendLocal = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (localBusyRef.current) {
+      localPendingRef.current = true;
+      return;
+    }
+    localBusyRef.current = true;
+    setBusy(true);
+    try {
+      const res = await fetch(`${localUrl.replace(/\/+$/, '')}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: buildPrompt(),
+          image: canvas.toDataURL('image/jpeg', 0.75),
+          strength,
+          seed,
+          num_inference_steps: 4,
+          guidance_scale: 1,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.image) {
+        setResultUrl(data.image);
+        setError(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('로컬 서버 연결 실패 — 서버 실행 여부와 주소를 확인하세요');
+    } finally {
+      localBusyRef.current = false;
+      setBusy(false);
+      if (localPendingRef.current) {
+        localPendingRef.current = false;
+        sendLocal();
+      }
+    }
+  }, [localUrl, buildPrompt, strength, seed]);
+
   const generate = useCallback(() => {
+    if (engine === 'local') {
+      sendLocal();
+      return;
+    }
     const conn = connRef.current;
     const canvas = canvasRef.current;
     if (!conn || !canvas) return;
@@ -176,14 +231,14 @@ export default function Sketch() {
       guidance_scale: 1,
       enable_safety_checks: false,
     });
-  }, [buildPrompt, strength, seed]);
+  }, [engine, sendLocal, buildPrompt, strength, seed]);
 
   // 프롬프트/옵션 변경 시 디바운스 재생성
   useEffect(() => {
-    if (!falKey || !hasDrawn) return;
+    if (!engineReady || !hasDrawn) return;
     const t = setTimeout(generate, 350);
     return () => clearTimeout(t);
-  }, [generate, falKey, hasDrawn]);
+  }, [generate, engineReady, hasDrawn]);
 
   // --- 드로잉 ---
   const getPos = (e) => {
@@ -228,20 +283,20 @@ export default function Sketch() {
     const pos = getPos(e);
     drawSegment(lastPosRef.current, pos);
     lastPosRef.current = pos;
-    if (falKey) generate(); // 전송은 throttleInterval로 자동 제한됨
+    if (engineReady) generate(); // fal은 throttleInterval, 로컬은 latest-wins로 제한됨
   };
 
   const handlePointerUp = () => {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    if (falKey) generate();
+    if (engineReady) generate();
   };
 
   const handleUndo = () => {
     const prev = undoStackRef.current.pop();
     if (!prev) return;
     canvasRef.current.getContext('2d').putImageData(prev, 0, 0);
-    if (falKey) generate();
+    if (engineReady) generate();
   };
 
   const handleClear = () => {
@@ -249,7 +304,7 @@ export default function Sketch() {
     const ctx = canvasRef.current.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    if (falKey) generate();
+    if (engineReady) generate();
   };
 
   // --- 결과 저장 ---
@@ -348,6 +403,18 @@ export default function Sketch() {
     setKeyInput('');
   };
 
+  const setEngineMode = (mode) => {
+    setEngine(mode);
+    localStorage.setItem(ENGINE_STORAGE, mode);
+  };
+
+  const saveLocalUrl = () => {
+    const url = localUrl.trim().replace(/\/+$/, '') || DEFAULT_LOCAL_URL;
+    setLocalUrl(url);
+    localStorage.setItem(LOCAL_URL_STORAGE, url);
+    setKeyModalOpen(false);
+  };
+
   return (
     <div className="sketch-page">
       <header className="sketch-header">
@@ -362,7 +429,7 @@ export default function Sketch() {
           <button className="sketch-key-btn" onClick={shareBoard}>공유</button>
         )}
         <button className="sketch-key-btn" onClick={() => setKeyModalOpen(true)}>
-          {falKey ? 'API 키 ✓' : 'API 키 설정'}
+          {engine === 'local' ? '로컬 서버 ✓' : falKey ? 'fal.ai ✓' : 'AI 엔진 설정'}
         </button>
       </header>
 
@@ -433,7 +500,7 @@ export default function Sketch() {
           <div className="sketch-pane-label">
             AI 시안
             <span className={`sketch-status ${busy ? 'busy' : ''}`}>
-              {!falKey ? 'API 키 필요' : busy ? '생성 중…' : resultUrl ? '완료' : '대기 중'}
+              {!engineReady ? '엔진 설정 필요' : busy ? '생성 중…' : resultUrl ? '완료' : '대기 중'}
             </span>
           </div>
           <div className="sketch-result">
@@ -441,19 +508,19 @@ export default function Sketch() {
               <img src={resultUrl} alt="AI 생성 시안" draggable={false} />
             ) : (
               <div className="sketch-result-empty">
-                {falKey
+                {engineReady
                   ? '왼쪽 캔버스에 포즈와 구도를 그려보세요'
-                  : 'fal.ai API 키를 등록하면 시작됩니다'}
+                  : 'AI 엔진(fal.ai 또는 맥 로컬 서버)을 설정하면 시작됩니다'}
               </div>
             )}
-            {!falKey && (
+            {!engineReady && (
               <button className="btn-primary sketch-result-cta" onClick={() => setKeyModalOpen(true)}>
-                API 키 등록하기
+                AI 엔진 설정하기
               </button>
             )}
           </div>
           <div className="sketch-result-actions">
-            <button className="sketch-action-btn" onClick={() => setSeed(Math.floor(Math.random() * 1e9))} disabled={!falKey}>
+            <button className="sketch-action-btn" onClick={() => setSeed(Math.floor(Math.random() * 1e9))} disabled={!engineReady}>
               🎲 다른 느낌으로
             </button>
             <button className="sketch-action-btn" onClick={handleDownload} disabled={!resultUrl}>
@@ -536,41 +603,81 @@ export default function Sketch() {
         </div>
       )}
 
-      {/* API 키 모달 */}
+      {/* AI 엔진 설정 모달 */}
       {keyModalOpen && (
         <div className="sketch-modal-backdrop" onClick={() => setKeyModalOpen(false)}>
           <div className="sketch-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>fal.ai API 키</h3>
-            <p>
-              실시간 생성에는{' '}
-              <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer">fal.ai</a>
-              {' '}API 키가 필요합니다. 키는 이 브라우저에만 저장됩니다.
-            </p>
-            <input
-              className="home-input"
-              type="password"
-              placeholder="key_id:key_secret"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveKey()}
-              autoFocus
-            />
-            <div className="sketch-modal-actions">
-              {falKey && (
-                <button
-                  className="sketch-action-btn danger"
-                  onClick={() => {
-                    localStorage.removeItem(FAL_KEY_STORAGE);
-                    setFalKey('');
-                    setKeyModalOpen(false);
-                  }}
-                >
-                  키 삭제
-                </button>
-              )}
-              <button className="sketch-action-btn" onClick={() => setKeyModalOpen(false)}>취소</button>
-              <button className="btn-primary sketch-modal-save" onClick={saveKey} disabled={!keyInput.trim()}>저장</button>
+            <h3>AI 엔진 설정</h3>
+            <div className="sketch-engine-toggle">
+              <button
+                className={engine === 'fal' ? 'active' : ''}
+                onClick={() => setEngineMode('fal')}
+              >
+                클라우드 (fal.ai)
+              </button>
+              <button
+                className={engine === 'local' ? 'active' : ''}
+                onClick={() => setEngineMode('local')}
+              >
+                로컬 서버 (맥)
+              </button>
             </div>
+
+            {engine === 'fal' ? (
+              <>
+                <p>
+                  종량제 클라우드 생성.{' '}
+                  <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer">fal.ai</a>
+                  에서 API 키를 발급받아 입력하세요. 키는 이 브라우저에만 저장됩니다.
+                </p>
+                <input
+                  className="home-input"
+                  type="password"
+                  placeholder={falKey ? '키 등록됨 — 변경하려면 새 키 입력' : 'key_id:key_secret'}
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveKey()}
+                  autoFocus
+                />
+                <div className="sketch-modal-actions">
+                  {falKey && (
+                    <button
+                      className="sketch-action-btn danger"
+                      onClick={() => {
+                        localStorage.removeItem(FAL_KEY_STORAGE);
+                        setFalKey('');
+                        setKeyModalOpen(false);
+                      }}
+                    >
+                      키 삭제
+                    </button>
+                  )}
+                  <button className="sketch-action-btn" onClick={() => setKeyModalOpen(false)}>취소</button>
+                  <button className="btn-primary sketch-modal-save" onClick={saveKey} disabled={!keyInput.trim()}>저장</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>
+                  맥에서 무료로 생성합니다. <code>local-ai/README.md</code> 안내대로 서버를
+                  실행한 뒤 주소를 입력하세요. 아이폰/아이패드에서는 같은 와이파이에서
+                  맥의 IP 주소(예: http://192.168.0.10:5959)를 입력합니다.
+                </p>
+                <input
+                  className="home-input"
+                  type="url"
+                  placeholder={DEFAULT_LOCAL_URL}
+                  value={localUrl}
+                  onChange={(e) => setLocalUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveLocalUrl()}
+                  autoFocus
+                />
+                <div className="sketch-modal-actions">
+                  <button className="sketch-action-btn" onClick={() => setKeyModalOpen(false)}>취소</button>
+                  <button className="btn-primary sketch-modal-save" onClick={saveLocalUrl}>저장</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

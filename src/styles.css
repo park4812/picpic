@@ -3485,3 +3485,35 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+.sketch-engine-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.sketch-engine-toggle button {
+  padding: 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sketch-engine-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sketch-modal code {
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
