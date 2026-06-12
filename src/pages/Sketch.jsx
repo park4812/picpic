@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { fal } from '@fal-ai/client';
+import { supabase, generateId, storageUrl } from '../supabase';
 
 const CANVAS_SIZE = 512;
 const FAL_KEY_STORAGE = 'picpic_fal_key';
@@ -46,6 +47,8 @@ const COLORS = ['#000000', '#7a7a7a', '#ffffff', '#c93c3c', '#3c6dc9', '#3cc95f'
 const BRUSH_SIZES = [4, 9, 18, 32];
 
 export default function Sketch() {
+  const { boardId } = useParams();
+  const navigate = useNavigate();
   const [falKey, setFalKey] = useState(() => localStorage.getItem(FAL_KEY_STORAGE) || '');
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [keyInput, setKeyInput] = useState('');
@@ -60,6 +63,10 @@ export default function Sketch() {
   const [error, setError] = useState(null);
   const [resultUrl, setResultUrl] = useState(null);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const [saved, setSaved] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [viewer, setViewer] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const canvasRef = useRef(null);
   const connRef = useRef(null);
@@ -73,6 +80,53 @@ export default function Sketch() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   }, []);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  // 보관함 로드 + 기기 간 실시간 동기화
+  useEffect(() => {
+    if (!boardId) {
+      setSaved([]);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from('sketches')
+      .select('*')
+      .eq('board_id', boardId)
+      .order('created_at', { ascending: false })
+      .then(({ data, error: err }) => {
+        if (!cancelled && !err && data) setSaved(data);
+      });
+
+    const channel = supabase
+      .channel(`sketches:${boardId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sketches', filter: `board_id=eq.${boardId}` },
+        (payload) => {
+          setSaved((prev) =>
+            prev.some((s) => s.id === payload.new.id) ? prev : [payload.new, ...prev]
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'sketches', filter: `board_id=eq.${boardId}` },
+        (payload) => {
+          setSaved((prev) => prev.filter((s) => s.id !== payload.old.id));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [boardId]);
 
   // fal 실시간 연결 (키 변경 시 재연결)
   useEffect(() => {
@@ -217,6 +271,74 @@ export default function Sketch() {
     }
   };
 
+  // --- 보관함 (기기 간 공유) ---
+  const saveToBoard = async () => {
+    if (!resultUrl || saving) return;
+    setSaving(true);
+    try {
+      let id = boardId;
+      if (!id) {
+        id = generateId();
+        const { error: err } = await supabase
+          .from('sketch_boards')
+          .insert({ id, title: '촬영 시안' });
+        if (err) throw err;
+        navigate(`/sketch/${id}`, { replace: true });
+      }
+      const blob = await (await fetch(resultUrl)).blob();
+      const path = `sketches/${id}/${generateId()}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from('post-images')
+        .upload(path, blob, { contentType: blob.type || 'image/jpeg' });
+      if (upErr) throw upErr;
+      const { data, error: insErr } = await supabase
+        .from('sketches')
+        .insert({
+          board_id: id,
+          storage_path: path,
+          prompt: buildPrompt(),
+          preset: presetId,
+          strength,
+          seed,
+        })
+        .select()
+        .single();
+      if (insErr) throw insErr;
+      setSaved((prev) =>
+        prev.some((s) => s.id === data.id) ? prev : [data, ...prev]
+      );
+      showToast('보관함에 저장됨 — 링크를 열면 다른 기기에서도 보입니다');
+    } catch (err) {
+      console.error(err);
+      showToast('저장에 실패했습니다');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteSaved = async (sketch) => {
+    setViewer(null);
+    setSaved((prev) => prev.filter((s) => s.id !== sketch.id));
+    await supabase.from('sketches').delete().eq('id', sketch.id);
+    await supabase.storage.from('post-images').remove([sketch.storage_path]);
+  };
+
+  const shareBoard = async () => {
+    const url = `${window.location.origin}/sketch/${boardId}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'PicPic 촬영 시안', url });
+        return;
+      } catch { /* 사용자가 취소 */ }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('링크가 복사되었습니다');
+    } catch {
+      showToast(url);
+    }
+  };
+
   const saveKey = () => {
     const k = keyInput.trim();
     if (!k) return;
@@ -236,6 +358,9 @@ export default function Sketch() {
           AI 촬영 시안 스케치
           <span className="sketch-title-sub">그리면 실시간으로 인물사진 시안이 생성됩니다</span>
         </div>
+        {boardId && (
+          <button className="sketch-key-btn" onClick={shareBoard}>공유</button>
+        )}
         <button className="sketch-key-btn" onClick={() => setKeyModalOpen(true)}>
           {falKey ? 'API 키 ✓' : 'API 키 설정'}
         </button>
@@ -332,7 +457,10 @@ export default function Sketch() {
               🎲 다른 느낌으로
             </button>
             <button className="sketch-action-btn" onClick={handleDownload} disabled={!resultUrl}>
-              ⬇️ 저장
+              ⬇️ 기기에 저장
+            </button>
+            <button className="sketch-action-btn primary" onClick={saveToBoard} disabled={!resultUrl || saving}>
+              {saving ? '저장 중…' : '☁️ 보관함에 저장'}
             </button>
           </div>
         </div>
@@ -361,7 +489,52 @@ export default function Sketch() {
         </label>
       </div>
 
-      {error && <div className="toast">{error}</div>}
+      {/* 시안 보관함 — 같은 링크를 연 모든 기기에서 실시간 동기화 */}
+      {(boardId || saved.length > 0) && (
+        <div className="sketch-board">
+          <div className="sketch-pane-label">
+            시안 보관함 ({saved.length})
+            <button className="sketch-key-btn" onClick={shareBoard}>
+              다른 기기에서 열기 / 공유
+            </button>
+          </div>
+          {saved.length === 0 ? (
+            <div className="sketch-board-empty">아직 저장된 시안이 없습니다</div>
+          ) : (
+            <div className="sketch-board-grid">
+              {saved.map((s) => (
+                <button key={s.id} className="sketch-board-item" onClick={() => setViewer(s)}>
+                  <img src={storageUrl(s.storage_path)} alt={s.prompt || '저장된 시안'} loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(error || toast) && <div className="toast">{error || toast}</div>}
+
+      {/* 저장된 시안 뷰어 */}
+      {viewer && (
+        <div className="sketch-modal-backdrop" onClick={() => setViewer(null)}>
+          <div className="sketch-viewer" onClick={(e) => e.stopPropagation()}>
+            <img src={storageUrl(viewer.storage_path)} alt={viewer.prompt || '저장된 시안'} />
+            {viewer.prompt && <p className="sketch-viewer-prompt">{viewer.prompt}</p>}
+            <div className="sketch-modal-actions">
+              <button className="sketch-action-btn danger" onClick={() => deleteSaved(viewer)}>삭제</button>
+              <a
+                className="sketch-action-btn"
+                href={storageUrl(viewer.storage_path)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                원본 열기
+              </a>
+              <button className="sketch-action-btn" onClick={() => setViewer(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* API 키 모달 */}
       {keyModalOpen && (

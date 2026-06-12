@@ -27,6 +27,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/my-pamphlets" element={<MyPamphlets />} />
           <Route path="/my-posts" element={<MyPosts />} />
           <Route path="/sketch" element={<Sketch />} />
+          <Route path="/sketch/:boardId" element={<Sketch />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
