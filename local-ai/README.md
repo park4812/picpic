@@ -49,6 +49,9 @@ python server.py
 
 ## 참고
 
-- 모델: [SimianLuo/LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7)
-  — fal.ai의 `lcm-sd15-i2i`와 같은 계열의 LCM 모델
+- 구도 추종: [ControlNet scribble](https://huggingface.co/lllyasviel/control_v11p_sd15_scribble)
+  — 스케치의 선과 구도를 그대로 따라가면서 사진풍으로 변환
+- 베이스 모델: [Lykon/dreamshaper-8](https://huggingface.co/Lykon/dreamshaper-8)
+  + [LCM-LoRA](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5) (고속 생성)
+- 앱의 "스케치 유지 ↔ AI 자유도" 슬라이더가 ControlNet 강도를 조절합니다
 - 서버를 끄려면 터미널에서 `Ctrl+C`

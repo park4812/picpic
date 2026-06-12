@@ -19,7 +19,7 @@ if [ ! -d venv ]; then
   python3 -m venv venv
 fi
 source venv/bin/activate
-if ! python -c "import torch, diffusers, fastapi" 2>/dev/null; then
+if ! python -c "import torch, diffusers, fastapi, peft" 2>/dev/null; then
   echo "▶ AI 라이브러리 설치 중 (몇 분 걸립니다)..."
   pip install -q --upgrade pip
   pip install -q -r requirements.txt
