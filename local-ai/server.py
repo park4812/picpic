@@ -12,6 +12,7 @@
 import base64
 import io
 import threading
+from typing import Optional
 
 import torch
 from diffusers import AutoPipelineForImage2Image
@@ -48,7 +49,7 @@ class GenRequest(BaseModel):
     prompt: str
     image: str  # data URI 또는 base64
     strength: float = 0.8
-    seed: int | None = None
+    seed: Optional[int] = None
     num_inference_steps: int = 4
     guidance_scale: float = 1.0
 
