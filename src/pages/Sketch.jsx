@@ -15,36 +15,36 @@ const PRESETS = [
     id: 'headshot',
     label: '스튜디오 헤드샷',
     prompt:
-      'professional studio portrait photograph, headshot, soft key lighting, seamless gray backdrop, 85mm lens, shallow depth of field, photorealistic, high detail skin',
+      'RAW photo, professional studio portrait photograph, headshot, soft key lighting, seamless gray backdrop, 85mm lens f1.8, shallow depth of field, realistic skin texture, detailed face, 8k uhd',
   },
   {
     id: 'outdoor',
     label: '야외 자연광',
     prompt:
-      'outdoor portrait photograph, golden hour natural light, soft bokeh background, candid mood, photorealistic, 50mm lens',
+      'RAW photo, outdoor portrait photograph, golden hour natural light, soft bokeh background, candid mood, 50mm lens, realistic skin texture, film grain',
   },
   {
     id: 'bw',
     label: '흑백 프로필',
     prompt:
-      'black and white portrait photograph, dramatic side lighting, dark background, film grain, photorealistic, fine art',
+      'RAW photo, black and white portrait photograph, dramatic side lighting, dark background, film grain, fine art, realistic skin texture',
   },
   {
     id: 'fashion',
     label: '전신 화보',
     prompt:
-      'full body fashion editorial photograph, studio strobe lighting, clean background, magazine style, photorealistic',
+      'RAW photo, full body fashion editorial photograph, studio strobe lighting, clean background, magazine style, realistic fabric and skin texture, 8k uhd',
   },
   {
     id: 'snap',
     label: '거리 스냅',
     prompt:
-      'street snap portrait photograph, urban background, natural daylight, candid pose, photorealistic, 35mm lens',
+      'RAW photo, street snap portrait photograph, urban background, natural daylight, candid pose, 35mm lens, film grain, realistic skin texture',
   },
 ];
 
 const NEGATIVE_PROMPT =
-  'cartoon, illustration, anime, drawing, painting, sketch, deformed, distorted face, extra limbs, low quality, blurry, watermark, text';
+  'cartoon, illustration, anime, drawing, painting, sketch, 3d render, cgi, plastic skin, doll, oversaturated, deformed, distorted face, extra limbs, low quality, blurry, watermark, text';
 
 const COLORS = ['#000000', '#7a7a7a', '#ffffff', '#c93c3c', '#3c6dc9', '#3cc95f', '#e0c04a', '#8a5a32', '#e8b89a'];
 const BRUSH_SIZES = [4, 9, 18, 32];
@@ -171,11 +171,11 @@ export default function Sketch() {
   }, [presetId, prompt]);
 
   // 로컬 서버 모드: 진행 중이면 마지막 요청만 예약(latest-wins)
-  const sendLocal = useCallback(async () => {
+  const sendLocal = useCallback(async (opts = {}) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (localBusyRef.current) {
-      localPendingRef.current = true;
+      localPendingRef.current = opts;
       return;
     }
     localBusyRef.current = true;
@@ -186,11 +186,13 @@ export default function Sketch() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: buildPrompt(),
+          negative_prompt: NEGATIVE_PROMPT,
           image: canvas.toDataURL('image/jpeg', 0.75),
           strength,
           seed,
-          num_inference_steps: 4,
-          guidance_scale: 1,
+          num_inference_steps: opts.hd ? 8 : 5,
+          guidance_scale: 1.5,
+          hd: !!opts.hd,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -206,15 +208,16 @@ export default function Sketch() {
       localBusyRef.current = false;
       setBusy(false);
       if (localPendingRef.current) {
+        const pending = localPendingRef.current;
         localPendingRef.current = false;
-        sendLocal();
+        sendLocal(pending);
       }
     }
   }, [localUrl, buildPrompt, strength, seed]);
 
-  const generate = useCallback(() => {
+  const generate = useCallback((opts = {}) => {
     if (engine === 'local') {
-      sendLocal();
+      sendLocal(opts);
       return;
     }
     const conn = connRef.current;
@@ -527,6 +530,11 @@ export default function Sketch() {
             <button className="sketch-action-btn" onClick={() => setSeed(Math.floor(Math.random() * 1e9))} disabled={!engineReady}>
               🎲 다른 느낌으로
             </button>
+            {engine === 'local' && (
+              <button className="sketch-action-btn" onClick={() => generate({ hd: true })} disabled={!engineReady || !hasDrawn}>
+                ✨ 고품질 렌더
+              </button>
+            )}
             <button className="sketch-action-btn" onClick={handleDownload} disabled={!resultUrl}>
               ⬇️ 기기에 저장
             </button>

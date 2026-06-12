@@ -25,10 +25,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageOps
 from pydantic import BaseModel
 
-MODEL_ID = "Lykon/dreamshaper-8"
+MODEL_ID = "emilianJR/epiCRealism"  # 실사(포토리얼) 특화 모델
 CONTROLNET_ID = "lllyasviel/control_v11p_sd15_scribble"
 LCM_LORA_ID = "latent-consistency/lcm-lora-sdv1-5"
 SIZE = 512
+HD_SIZE = 768
 PORT = 5959
 
 # 스케치 색상 힌트를 살리기 위한 img2img 강도 (구도는 ControlNet이 담당)
@@ -65,17 +66,19 @@ app.add_middleware(
 class GenRequest(BaseModel):
     prompt: str
     image: str  # data URI 또는 base64
+    negative_prompt: Optional[str] = None
     strength: float = 0.8  # 앱의 "스케치 유지 ↔ AI 자유도" 슬라이더 값
     seed: Optional[int] = None
     num_inference_steps: int = 5
-    guidance_scale: float = 1.2
+    guidance_scale: float = 1.5
+    hd: bool = False  # 고품질 렌더 (768px, 8스텝)
 
 
-def decode_image(data: str) -> Image.Image:
+def decode_image(data: str, size: int) -> Image.Image:
     if data.startswith("data:") and "," in data:
         data = data.split(",", 1)[1]
     img = Image.open(io.BytesIO(base64.b64decode(data))).convert("RGB")
-    return img.resize((SIZE, SIZE), Image.LANCZOS)
+    return img.resize((size, size), Image.LANCZOS)
 
 
 def to_scribble(img: Image.Image) -> Image.Image:
@@ -90,8 +93,9 @@ def health():
 
 @app.post("/generate")
 def generate(req: GenRequest):
+    size = HD_SIZE if req.hd else SIZE
     try:
-        init = decode_image(req.image)
+        init = decode_image(req.image, size)
     except Exception:
         raise HTTPException(status_code=400, detail="이미지 디코딩 실패")
 
@@ -100,11 +104,12 @@ def generate(req: GenRequest):
     )
     # 슬라이더 값(0.4=스케치 유지 ~ 0.95=AI 자유도)을 ControlNet 강도로 변환
     control_scale = max(0.35, min(1.1, 1.35 - req.strength))
-    steps = max(req.num_inference_steps, 4)
+    steps = max(req.num_inference_steps, 8 if req.hd else 4)
 
     with lock:
         out = pipe(
             prompt=req.prompt,
+            negative_prompt=req.negative_prompt,
             image=init,
             control_image=to_scribble(init),
             strength=INIT_STRENGTH,
