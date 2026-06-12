@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { fal } from '@fal-ai/client';
-import { supabase, generateId, storageUrl } from '../supabase';
+import { supabase, generateId, storageUrl, hasSupabaseConfig } from '../supabase';
 
 const CANVAS_SIZE = 512;
 const FAL_KEY_STORAGE = 'picpic_fal_key';
@@ -329,6 +329,10 @@ export default function Sketch() {
   // --- 보관함 (기기 간 공유) ---
   const saveToBoard = async () => {
     if (!resultUrl || saving) return;
+    if (!hasSupabaseConfig) {
+      showToast('보관함은 Supabase 설정(.env)이 필요합니다 — 기기에 저장은 가능해요');
+      return;
+    }
     setSaving(true);
     try {
       let id = boardId;
