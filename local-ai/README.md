@@ -51,7 +51,8 @@ python server.py
 
 - 구도 추종: [ControlNet scribble](https://huggingface.co/lllyasviel/control_v11p_sd15_scribble)
   — 스케치의 선과 구도를 그대로 따라가면서 사진풍으로 변환
-- 베이스 모델: [Lykon/dreamshaper-8](https://huggingface.co/Lykon/dreamshaper-8)
-  + [LCM-LoRA](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5) (고속 생성)
+- 베이스 모델: [emilianJR/epiCRealism](https://huggingface.co/emilianJR/epiCRealism)
+  (실사 특화) + [LCM-LoRA](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5) (고속 생성)
 - 앱의 "스케치 유지 ↔ AI 자유도" 슬라이더가 ControlNet 강도를 조절합니다
+- ✨ 고품질 렌더 버튼: 768px·8스텝으로 한 장을 정밀 생성 (2~4초)
 - 서버를 끄려면 터미널에서 `Ctrl+C`
