@@ -3034,3 +3034,374 @@ body {
   background: #5865f2;
   color: #fff;
 }
+
+/* ===== AI Sketch Studio ===== */
+.sketch-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100dvh;
+}
+
+.sketch-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sketch-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.sketch-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+}
+
+.sketch-title-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.sketch-key-btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sketch-presets {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sketch-presets::-webkit-scrollbar { display: none; }
+
+.sketch-preset {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.sketch-preset.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--selected-bg);
+  box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
+.sketch-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 760px) {
+  .sketch-panes { grid-template-columns: 1fr; }
+}
+
+.sketch-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sketch-pane-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  min-height: 32px;
+}
+
+.sketch-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.sketch-tool {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sketch-tool.active {
+  border-color: var(--accent);
+  background: var(--selected-bg);
+}
+
+.sketch-canvas {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  touch-action: none;
+  cursor: crosshair;
+  display: block;
+}
+
+.sketch-brush-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sketch-colors {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sketch-color {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.sketch-color.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.sketch-sizes {
+  display: flex;
+  gap: 6px;
+}
+
+.sketch-size {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.sketch-size span {
+  border-radius: 50%;
+  background: var(--text-dim);
+  display: block;
+}
+
+.sketch-size.active {
+  border-color: var(--accent);
+}
+
+.sketch-size.active span {
+  background: var(--text);
+}
+
+.sketch-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.sketch-status.busy {
+  color: var(--accent);
+}
+
+.sketch-result {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sketch-result img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sketch-result-empty {
+  color: var(--text-dim);
+  font-size: 14px;
+  text-align: center;
+  padding: 0 24px;
+  line-height: 1.6;
+}
+
+.sketch-result-cta {
+  position: relative;
+  width: auto;
+  padding: 12px 24px;
+}
+
+.sketch-result-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sketch-action-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sketch-action-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sketch-action-btn.danger {
+  color: var(--danger);
+}
+
+.sketch-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sketch-prompt {
+  flex: 1 1 320px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.sketch-prompt:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.sketch-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 1 1 260px;
+}
+
+.sketch-strength span {
+  white-space: nowrap;
+}
+
+.sketch-strength input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.sketch-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.sketch-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sketch-modal h3 {
+  font-size: 17px;
+}
+
+.sketch-modal p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.sketch-modal p a {
+  color: var(--accent);
+}
+
+.sketch-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sketch-modal-actions .sketch-action-btn {
+  flex: 0 0 auto;
+  padding: 11px 18px;
+}
+
+.sketch-modal-save {
+  width: auto;
+  padding: 11px 24px;
+}
